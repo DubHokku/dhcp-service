@@ -1,8 +1,8 @@
 # dhcp-service
 
-тестовая версия DHCP сервиса, выполняет обрабоку запросов DISCOVER и REQUEST, отвечает пакетами OFFER и ACK. 
+Тестовая версия DHCP сервиса, выполняет обрабоку запросов DISCOVER и REQUEST, отвечает пакетами OFFER и ACK. 
 
-зависимости:
+Зависимости:
 
 используются вызовы библиотеки libtins, https://libtins.github.io
 
