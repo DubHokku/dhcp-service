@@ -1,13 +1,13 @@
 from conans import ConanFile, tools
 
-class dhcp_service(ConanFile):
+class dhcp_serviceConan(ConanFile):
     name = "dhcp_service"
     version = "0.1"
     settings = None
-    description = "dhcp service"
+    description = "DHCP service"
     url = "None"
     license = "None"
-    author = "None"
+    author = "Hokku"
     topics = None
 
     def package(self):

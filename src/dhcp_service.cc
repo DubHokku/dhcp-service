@@ -1,15 +1,87 @@
-#include "dhcp_service.h"
+#include "dhcp_service.hpp"
 
-dhcp_service::dhcp_service()
-{}
+#include "PacketParser.hpp"
+#include "api/Packet.hpp"
+#include <runos/core/logging.hpp>
 
-dhcp_service::~dhcp_service()
-{}
+namespace runos
+{
 
-// void dhcp_service::init( Loader* loader, const Config& config )
-void dhcp_service::init()
-{}
+using SwitchPtr = safe::shared_ptr<Switch>;
+    
+REGISTER_APPLICATION( dhcp_service, 
+{
+    // "controller",
+    "switch-manager",
+    // "topology",
+    "" })
 
+void dhcp_service::init( Loader* loader, const Config& config )
+{
+    inet_aton( "192.168.1.0", ( struct in_addr* )&dhcp_pool.subnet );
+    inet_aton( "255.255.255.0", ( struct in_addr* )&dhcp_pool.subnet_mask );
+    inet_aton( "192.168.1.255", ( struct in_addr* )&dhcp_pool.broadcast );
+    
+    inet_aton( "192.168.1.1", ( struct in_addr* )&dhcp_pool.router );
+    inet_aton( "192.168.1.2", ( struct in_addr* )&dhcp_pool.name_servers[0]);
+    inet_aton( "192.168.1.4", ( struct in_addr* )&dhcp_pool.name_servers[1]);
+    inet_aton( "192.168.1.7", ( struct in_addr* )&dhcp_pool.name_servers[2]);
+    inet_aton( "192.168.1.2", ( struct in_addr* )&dhcp_pool.time_servers[0]);
+    inet_aton( "192.168.1.4", ( struct in_addr* )&dhcp_pool.time_servers[1]);    
+    
+    
+    switch_manager_ = SwitchManager::get( loader );
+    connect( switch_manager_, &SwitchManager::switchUp, this, &dhcp_service::onSwitchUp );
+    // auto data_base = std::make_shared<Hostsbase>();
+/*        
+    handler_ = Controller::get( loader )->register_handler
+    (
+        [=]( of13::PacketIn& pi, OFConnectionPtr ofconn ) mutable->bool
+        {
+            PacketParser pp( pi );
+            runos::Packet& pkt( pp );
+
+            // src_mac_ = pkt.load( ofb::eth_src );
+            // dst_mac_ = pkt.load( ofb::eth_dst );
+            // in_port_ = pkt.load( ofb::in_port );
+            // dpid_ = ofconn->dpid();
+
+            if( not data_base->setPort(dpid_, src_mac_, in_port_ )) 
+            {
+                return false;
+            }
+
+            auto target_port = data_base->getPort( dpid_, dst_mac_ );
+            if( target_port != boost::none ) 
+            {
+                send_unicast( *target_port, pi );
+            } 
+            else 
+            {
+                send_broadcast(pi);
+            }
+
+            return true;
+        }, -5
+    );  
+*/
+
+    // run();
+}
+
+void dhcp_service::onSwitchUp( SwitchPtr sw )
+{
+    of13::FlowMod fm;
+    fm.command( of13::OFPFC_ADD );
+    fm.table_id( 0 );
+    fm.priority( 1 );
+    of13::ApplyActions applyActions;
+    of13::OutputAction output_action( of13::OFPP_CONTROLLER, 0xFFFF );
+    applyActions.add_action( output_action );
+    fm.add_instruction( applyActions );
+    sw->connection()->send( fm );
+}
+ 
 bool dhcp_service::check_address( uint32_t ip )
 {
     struct in_addr address;
@@ -33,7 +105,7 @@ bool dhcp_service::check_address( uint32_t ip )
 
     return true;
 }
-
+    
 uint32_t dhcp_service::mk_addr()
 {
     std::unordered_map< uint32_t, uint32_t >::iterator it_lease;
@@ -54,7 +126,7 @@ uint32_t dhcp_service::mk_addr()
 
     return 0;
 }
-
+    
 uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> client_hw )
 {
     std::unordered_map< std::string, uint32_t >::iterator it_addr;
@@ -91,7 +163,7 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
                         {
                             lease_base.erase( it_lease );
                             lease_base.insert({ it_addr->second, ( uint32_t )time( nullptr ) + TIME_LEASE });
-                            
+                        
                             return it_addr->second;
                         }
                         else
@@ -100,7 +172,7 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
                             addr_base.erase( it_addr );
                             addr_base.insert({ str_hw, request_ip });
                             lease_base.insert({ request_ip, ( uint32_t )time( nullptr ) + TIME_LEASE });
-                            
+                        
                             return request_ip;
                         }
                     }
@@ -206,7 +278,7 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
 
     return 0;
 }
-
+    
 int dhcp_service::run()
 {
     Tins::SnifferConfiguration config;
@@ -377,3 +449,4 @@ int dhcp_service::run()
         packet_counter++;
     }
 }
+} // namespace runos
