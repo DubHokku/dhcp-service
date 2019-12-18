@@ -1,4 +1,4 @@
-#include "../include/dhcp_service.h"
+#include "dhcp_service.h"
 
 dhcp_service::dhcp_service()
 {}
@@ -59,8 +59,6 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
 {
     std::unordered_map< std::string, uint32_t >::iterator it_addr;
     std::unordered_map< uint32_t, uint32_t >::iterator it_lease;
-    struct in_addr address;
-    address.s_addr = request_ip;
     
     std::stringstream ss;
     ss << client_hw;
@@ -302,13 +300,17 @@ int dhcp_service::run()
                 if( dh_request_address )
                     in_yiaddr.s_addr = *( uint32_t* )dh_request_address->data_ptr();
                 
-                if( in_yiaddr.s_addr > dhcp_pool.subnet )
+                if( ntohl( in_yiaddr.s_addr ) > ntohl( dhcp_pool.subnet ))
                 {
-                    if( in_yiaddr.s_addr < dhcp_pool.broadcast )
+                    if( ntohl( in_yiaddr.s_addr ) < ntohl( dhcp_pool.broadcast ))
                         in_yiaddr.s_addr = get_address( in_yiaddr.s_addr, dhcp.chaddr());
+                    else
+                        in_yiaddr.s_addr = get_address( 0, dhcp.chaddr());
+                        // mk DHCP::NAK; continue;
                 }
                 else
                     in_yiaddr.s_addr = get_address( 0, dhcp.chaddr());
+                    // mk DHCP::NAK; continue;
                 
                 in_ciaddr.s_addr = 0; // ip клиента, указывается в случае, когда клиент .. может отвечать на запросы ARP.
                 in_mask.s_addr = dhcp_pool.subnet_mask;
