@@ -23,7 +23,9 @@
 
 namespace runos
 {
+    using SwitchPtr = safe::shared_ptr<Switch>; 
     namespace of13 = fluid_msg::of13;
+    
     namespace ofb
     {
         constexpr auto in_port = oxm::in_port();
@@ -38,6 +40,9 @@ namespace runos
 
         public:
         void init( Loader* loader, const Config& config ) override;
+        
+        protected slots:
+        void onSwitchUp( SwitchPtr sw );
     
         private:
         OFMessageHandlerPtr handler_;
