@@ -15,7 +15,6 @@
 #include <arpa/inet.h>
 
 #define NIC "eth0"
-// #define NIC "wlo1"
 
 #define TIME_LEASE 1712
 #define TIME_RENEWAL 856
@@ -23,12 +22,12 @@
 
 namespace runos
 {
+    using SwitchPtr = safe::shared_ptr<Switch>;
     namespace of13 = fluid_msg::of13;
     namespace ofb
     {
         constexpr auto in_port = oxm::in_port();
-        constexpr auto eth_src = oxm::eth_src();
-        constexpr auto eth_dst = oxm::eth_dst();
+        // constexpr auto eth_src = oxm::eth_src();
     }
     
     class dhcp_service : public Application
@@ -38,13 +37,16 @@ namespace runos
 
         public:
         void init( Loader* loader, const Config& config ) override;
+        
+        protected slots:
+        void onSwitchUp( SwitchPtr sw );
     
         private:
         OFMessageHandlerPtr handler_;
         SwitchManager* switch_manager_;
-        
-        ethaddr src_mac_;
-        ethaddr dst_mac_;
+
+        Tins::HWAddress<6> src_mac;
+        // ethaddr src_mac_;
         uint64_t dpid_;
         uint32_t in_port_;
         
@@ -59,9 +61,11 @@ namespace runos
         };
         pool_addr_t dhcp_pool;
         
+        void pool();
         uint32_t mk_addr();
         bool check_address( uint32_t );
         uint32_t get_address( uint32_t, Tins::HWAddress<6>);
+        void service( Tins::DHCP* );
     
         std::unordered_map< uint32_t, uint32_t > lease_base;
         std::unordered_map< std::string, uint32_t > addr_base;
