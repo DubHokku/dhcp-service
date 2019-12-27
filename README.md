@@ -7,7 +7,8 @@
 
 libtins ( https://libtins.github.io/ ), libfluid ( http://opennetworkingfoundation.github.io/libfluid )
 
-используется docker контейнер runos/runos-2.0, http://arccn.github.io/runos/docs-2.0/eng/11_RUNOS_InstallationGuide.html#installation-with-docker
+используется docker контейнер runos/runos-2.0
+( http://arccn.github.io/runos/docs-2.0/eng/11_RUNOS_InstallationGuide.html#installation-with-docker )
 
 
 Сборка:
@@ -30,13 +31,7 @@ libtins ( https://libtins.github.io/ ), libfluid ( http://opennetworkingfoundati
     $ cd /home/runos
     # build/runos
 
-интерфейс для прослушивания определяется в dhcp_service.hh
-
-    # define NIC "eth0" 
-
-настройка зоны в runos::dhcp_service::pool()
-
-
+    
 Проверка:
 
 с применением эмулятора mininet ( https://github.com/mininet/mininet )
@@ -45,3 +40,9 @@ libtins ( https://libtins.github.io/ ), libfluid ( http://opennetworkingfoundati
     
     mininet> h1 dhclient -r
     mininet> h1 dhclient -1
+
+интерфейс для прослушивания определяется в dhcp_service.hh
+
+    # define NIC "eth0" 
+
+настройка зоны в runos::dhcp_service::pool()

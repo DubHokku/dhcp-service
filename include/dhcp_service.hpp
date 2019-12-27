@@ -34,21 +34,21 @@ namespace runos
     {
         Q_OBJECT
         SIMPLE_APPLICATION( dhcp_service, "dhcp-service" )
-
+        
         public:
         void init( Loader* loader, const Config& config ) override;
         
         protected slots:
         void onSwitchUp( SwitchPtr sw );
-    
+        
         private:
         OFMessageHandlerPtr handler_;
         SwitchManager* switch_manager_;
-
-        Tins::HWAddress<6> src_mac;
-        // ethaddr src_mac_;
+        
         uint64_t dpid_;
         uint32_t in_port_;
+        // ethaddr src_mac_;
+        Tins::HWAddress<6> src_mac;
         
         struct pool_addr_t
         {
@@ -66,7 +66,7 @@ namespace runos
         bool check_address( uint32_t );
         uint32_t get_address( uint32_t, Tins::HWAddress<6>);
         void service( Tins::DHCP* );
-    
+        
         std::unordered_map< uint32_t, uint32_t > lease_base;
         std::unordered_map< std::string, uint32_t > addr_base;
     };

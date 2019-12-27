@@ -6,11 +6,12 @@
 
 namespace runos
 {
-    
+
 REGISTER_APPLICATION( dhcp_service, 
 {
     "controller",
     "switch-manager",
+    // "topology",
     "" })
 
 void dhcp_service::init( Loader* loader, const Config& config )
@@ -50,7 +51,7 @@ void dhcp_service::init( Loader* loader, const Config& config )
             
             return true;
         }, -5
-    );  
+    );
 }
 
 void dhcp_service::pool()
@@ -64,38 +65,38 @@ void dhcp_service::pool()
     inet_aton( "192.168.1.4", ( struct in_addr* )&dhcp_pool.name_servers[1]);
     inet_aton( "192.168.1.7", ( struct in_addr* )&dhcp_pool.name_servers[2]);
     inet_aton( "192.168.1.2", ( struct in_addr* )&dhcp_pool.time_servers[0]);
-    inet_aton( "192.168.1.4", ( struct in_addr* )&dhcp_pool.time_servers[1]);  
+    inet_aton( "192.168.1.4", ( struct in_addr* )&dhcp_pool.time_servers[1]);
 }
 
 void dhcp_service::service( Tins::DHCP *dhcp )
 {
     Tins::NetworkInterface nic( NIC );
     Tins::NetworkInterface::Info info = nic.addresses();
-
+    
     const auto dh_type = dhcp->search_option( Tins::DHCP::DHCP_MESSAGE_TYPE );
     if( dh_type )
     {
         if( *dh_type->data_ptr() == Tins::DHCP::Flags::DISCOVER )
         {
             std::cout << "DHCP::DISCOVER \n";
-                    
+            
             struct in_addr in_yiaddr, in_ciaddr, in_mask, in_broadcast;
             in_yiaddr.s_addr = get_address( 0, dhcp->chaddr());
             in_ciaddr.s_addr = 0; // ip клиента, указывается в случае, когда клиент .. может отвечать на запросы ARP.
             in_mask.s_addr = dhcp_pool.subnet_mask;
             in_broadcast.s_addr = dhcp_pool.broadcast;
-        
+            
             Tins::DHCP *offer = new Tins::DHCP;
             offer->opcode( Tins::BootP::BOOTREPLY );
             offer->xid( dhcp->xid());
             offer->type( Tins::DHCP::Flags::OFFER );
-                
+            
             offer->ciaddr( inet_ntoa( in_ciaddr ));
             offer->yiaddr( inet_ntoa( in_yiaddr ));
             offer->siaddr( info.ip_addr );
             offer->giaddr( dhcp->giaddr());
             offer->chaddr( dhcp->chaddr());
-        
+            
             offer->server_identifier( info.ip_addr );
             offer->subnet_mask( inet_ntoa( in_mask ));
             offer->broadcast( inet_ntoa( in_broadcast ));
@@ -105,26 +106,27 @@ void dhcp_service::service( Tins::DHCP *dhcp )
                 ( const unsigned char* )dhcp_pool.name_servers });
             offer->add_option({ Tins::DHCP::OptionTypes::NTP_SERVERS, sizeof( dhcp_pool.time_servers ), 
                 ( const unsigned char* )dhcp_pool.time_servers });
-                
+            
             offer->domain_name( "same_dh" );
             offer->lease_time( TIME_LEASE );
             offer->renewal_time( TIME_RENEWAL );
             offer->rebind_time( TIME_REBIND );
-            offer->end();  
-                
+            offer->end();
+            
             Tins::EthernetII opkt = Tins::EthernetII( src_mac, info.hw_addr ) / 
                 Tins::IP( inet_ntoa( in_yiaddr ), info.ip_addr ) / Tins::UDP( 68, 67 ) / *offer;
-                
+            
             {   // Send PacketOut.
                 of13::PacketOut po;
-                uint8_t* str_opkt = new uint8_t[opkt.size()];
                 Tins::PDU::serialization_type buffer = opkt.serialize();
+                uint8_t* str_opkt = new uint8_t[opkt.size()];
                 
-                for( unsigned i = 0; i < opkt.size(); i++ )
+                for( auto i : buffer )
                     str_opkt[i] = buffer.at( i );
-    
+                
                 po.data( str_opkt, opkt.size());
-                of13::OutputAction output_action( in_port_, of13::OFPCML_NO_BUFFER );
+                /// of13::OutputAction output_action( in_port_, of13::OFPCML_NO_BUFFER );
+                of13::OutputAction output_action( in_port_, of13::OFPXMT_OFB_IN_PORT );
                 po.add_action( output_action );
                 switch_manager_->switch_( dpid_ )->connection()->send( po );
             }   // Send PacketOut.
@@ -134,11 +136,11 @@ void dhcp_service::service( Tins::DHCP *dhcp )
             std::cout << "DHCP::REQUEST \n";
             
             struct in_addr in_yiaddr, in_ciaddr, in_mask, in_broadcast;
-        
+            
             auto dh_request_address = dhcp->search_option( Tins::DHCP::OptionTypes::DHCP_REQUESTED_ADDRESS );
             if( dh_request_address )
                 in_yiaddr.s_addr = *( uint32_t* )dh_request_address->data_ptr();
-        
+            
             if( ntohl( in_yiaddr.s_addr ) > ntohl( dhcp_pool.subnet ))
             {
                 if( ntohl( in_yiaddr.s_addr ) < ntohl( dhcp_pool.broadcast ))
@@ -150,16 +152,16 @@ void dhcp_service::service( Tins::DHCP *dhcp )
             else
                 in_yiaddr.s_addr = get_address( 0, dhcp->chaddr());
                 // mk DHCP::NAK; continue;
-                
+            
             in_ciaddr.s_addr = 0; // ip клиента, указывается в случае, когда клиент .. может отвечать на запросы ARP.
             in_mask.s_addr = dhcp_pool.subnet_mask;
             in_broadcast.s_addr = dhcp_pool.broadcast;
-        
+            
             Tins::DHCP *ack = new Tins::DHCP;
             ack->opcode( Tins::BootP::BOOTREPLY );
             ack->xid( dhcp->xid());
             ack->type( Tins::DHCP::Flags::ACK );
-        
+            
             ack->ciaddr( inet_ntoa( in_ciaddr ));
             ack->yiaddr( inet_ntoa( in_yiaddr ));
             ack->siaddr( info.ip_addr );
@@ -175,26 +177,27 @@ void dhcp_service::service( Tins::DHCP *dhcp )
                 ( const unsigned char* )dhcp_pool.name_servers });
             ack->add_option({ Tins::DHCP::OptionTypes::NTP_SERVERS, sizeof( dhcp_pool.time_servers ), 
                 ( const unsigned char* )dhcp_pool.time_servers });
-        
+            
             ack->domain_name( "same_dh" );
             ack->lease_time( TIME_LEASE );
             ack->renewal_time( TIME_RENEWAL );
             ack->rebind_time( TIME_REBIND );
-            ack->end();  
-        
+            ack->end();
+            
             Tins::EthernetII opkt = Tins::EthernetII( src_mac, info.hw_addr ) / 
                 Tins::IP( inet_ntoa( in_yiaddr ), info.ip_addr ) / Tins::UDP( 68, 67 ) / *ack;
             
             {   // Send PacketOut.
                 of13::PacketOut po;
-                uint8_t* str_opkt = new uint8_t[opkt.size()];
                 Tins::PDU::serialization_type buffer = opkt.serialize();
+                uint8_t* str_opkt = new uint8_t[opkt.size()];
                 
-                for( unsigned i = 0; i < opkt.size(); i++ )
+                for( auto i : buffer )
                     str_opkt[i] = buffer.at( i );
                 
                 po.data( str_opkt, opkt.size());
-                of13::OutputAction output_action( in_port_, of13::OFPCML_NO_BUFFER );
+                // of13::OutputAction output_action( in_port_, of13::OFPCML_NO_BUFFER );
+                of13::OutputAction output_action( in_port_, of13::OFPXMT_OFB_IN_PORT );
                 po.add_action( output_action );
                 switch_manager_->switch_( dpid_ )->connection()->send( po );
             }   // Send PacketOut.  */
@@ -210,7 +213,7 @@ void dhcp_service::service( Tins::DHCP *dhcp )
         if( *dh_type->data_ptr() == Tins::DHCP::Flags::NAK )
         {
             std::cout << "DHCP::NAK \n";
-        } 
+        }
         if( *dh_type->data_ptr() == Tins::DHCP::Flags::DECLINE )
         {
             std::cout << "DHCP::DECLINE \n";
@@ -239,30 +242,6 @@ void dhcp_service::onSwitchUp( SwitchPtr sw )
     sw->connection()->send( fm );
 }
 
-bool dhcp_service::check_address( uint32_t ip )
-{
-    struct in_addr address;
-    address.s_addr = ip;
-    Tins::HWAddress<6> client_hw;
-    
-    Tins::PacketSender sender;
-    sender.default_interface( NIC );
-    try
-    {
-        client_hw = Tins::Utils::resolve_hwaddr( inet_ntoa( address ), sender );
-        // std::cout << "have response \n";
-        
-        return true;
-    }
-    catch( std::exception &ex )
-    {
-        // std::cout << "response timeout \n";
-        return false;
-    }
-
-    return true;
-}
-    
 uint32_t dhcp_service::mk_addr()
 {
     std::unordered_map< uint32_t, uint32_t >::iterator it_lease;
@@ -283,7 +262,31 @@ uint32_t dhcp_service::mk_addr()
 
     return 0;
 }
+
+bool dhcp_service::check_address( uint32_t ip )
+{
+    struct in_addr address;
+    address.s_addr = ip;
+    Tins::HWAddress<6> client_hw;
     
+    Tins::PacketSender sender;
+    sender.default_interface( NIC );
+    try
+    {
+        client_hw = Tins::Utils::resolve_hwaddr( inet_ntoa( address ), sender );
+        // std::cout << "have response \n";
+        
+        return true;
+    }
+    catch( std::exception &ex )
+    {
+        // std::cout << "response timeout \n";
+        return false;
+    }
+    
+    return true;
+}
+
 uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> client_hw )
 {
     std::unordered_map< std::string, uint32_t >::iterator it_addr;
@@ -308,7 +311,7 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
                 return it_addr->second;
             }
             else
-            {   
+            {
                 if( check_address( it_addr->second ))
                     addr_base.erase( it_addr );
                 else
@@ -320,7 +323,7 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
                         {
                             lease_base.erase( it_lease );
                             lease_base.insert({ it_addr->second, ( uint32_t )time( nullptr ) + TIME_LEASE });
-                        
+                            
                             return it_addr->second;
                         }
                         else
@@ -329,7 +332,7 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
                             addr_base.erase( it_addr );
                             addr_base.insert({ str_hw, request_ip });
                             lease_base.insert({ request_ip, ( uint32_t )time( nullptr ) + TIME_LEASE });
-                        
+                            
                             return request_ip;
                         }
                     }
@@ -432,7 +435,7 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
             return addr;
         }
     }
-
+    
     return 0;
 }
 } // namespace runos
