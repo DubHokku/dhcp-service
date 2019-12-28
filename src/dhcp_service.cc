@@ -265,23 +265,35 @@ uint32_t dhcp_service::mk_addr()
 
 bool dhcp_service::check_address( uint32_t ip )
 {
+    std::cout << "check_address() \n";
+    
     struct in_addr address;
     address.s_addr = ip;
     Tins::HWAddress<6> client_hw;
     
-    Tins::PacketSender sender;
-    sender.default_interface( NIC );
-    try
+    const Tins::NetworkInterface nic( NIC );
+    Tins::NetworkInterface::Info info = nic.addresses();
+    
     {
-        client_hw = Tins::Utils::resolve_hwaddr( inet_ntoa( address ), sender );
-        // std::cout << "have response \n";
+        Tins::IP *ip = new Tins::IP(  inet_ntoa( address ), info.ip_addr );
+        ip->ttl( 64 );
+        ip->flags( Tins::IP::Flags::DONT_FRAGMENT );
         
-        return true;
-    }
-    catch( std::exception &ex )
-    {
-        // std::cout << "response timeout \n";
-        return false;
+        char data[] = { "0123456789abcdefghijklmnopqrstuvwxyz01234567890ab" };
+        Tins::ICMP *icmp = new Tins::ICMP(( uint8_t* )data, sizeof( data ));
+        
+        srand( time( nullptr ));
+        icmp->set_echo_request(( uint16_t )rand(), 1 );
+        
+        ip->inner_pdu( icmp );
+        
+        Tins::PacketSender request;
+        Tins::PDU *response = request.send_recv( *ip, nic );
+        
+        if( response == 0 )
+            return false;
+        else
+            return true;
     }
     
     return true;
