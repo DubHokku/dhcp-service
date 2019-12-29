@@ -38,8 +38,12 @@ libtins ( https://libtins.github.io/ ), libfluid ( http://opennetworkingfoundati
 
     # mn --topo linear,4 --switch ovsk,protocols=OpenFlow13 --controller remote,ip=172.17.0.4,port=6653
     
+    mininet> h1 ifconfig
+    
     mininet> h1 dhclient -r
     mininet> h1 dhclient -1
+    
+    mininet> h1 ifconfig
 
 интерфейс для прослушивания определяется в dhcp_service.hh
 

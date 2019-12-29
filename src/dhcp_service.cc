@@ -56,16 +56,19 @@ void dhcp_service::init( Loader* loader, const Config& config )
 
 void dhcp_service::pool()
 {
-    inet_aton( "192.168.1.0", ( struct in_addr* )&dhcp_pool.subnet );
-    inet_aton( "255.255.255.0", ( struct in_addr* )&dhcp_pool.subnet_mask );
-    inet_aton( "192.168.1.255", ( struct in_addr* )&dhcp_pool.broadcast );
+    inet_aton( "172.17.0.0", ( struct in_addr* )&dhcp_pool.subnet );
+    inet_aton( "255.255.0.0", ( struct in_addr* )&dhcp_pool.subnet_mask );
+    inet_aton( "172.17.255.255", ( struct in_addr* )&dhcp_pool.broadcast );
     
-    inet_aton( "192.168.1.1", ( struct in_addr* )&dhcp_pool.router );
-    inet_aton( "192.168.1.2", ( struct in_addr* )&dhcp_pool.name_servers[0]);
-    inet_aton( "192.168.1.4", ( struct in_addr* )&dhcp_pool.name_servers[1]);
-    inet_aton( "192.168.1.7", ( struct in_addr* )&dhcp_pool.name_servers[2]);
-    inet_aton( "192.168.1.2", ( struct in_addr* )&dhcp_pool.time_servers[0]);
-    inet_aton( "192.168.1.4", ( struct in_addr* )&dhcp_pool.time_servers[1]);
+    inet_aton( "172.17.0.1", ( struct in_addr* )&dhcp_pool.router );
+    inet_aton( "172.17.1.2", ( struct in_addr* )&dhcp_pool.name_servers[0]);
+    inet_aton( "172.17.1.4", ( struct in_addr* )&dhcp_pool.name_servers[1]);
+    inet_aton( "172.17.1.7", ( struct in_addr* )&dhcp_pool.name_servers[2]);
+    inet_aton( "172.17.1.2", ( struct in_addr* )&dhcp_pool.time_servers[0]);
+    inet_aton( "172.17.1.4", ( struct in_addr* )&dhcp_pool.time_servers[1]);
+    
+    // dhcp_pool.dynamic_hosts = 0;
+    // dhcp_pool.dynamic_hosts = htonl( dhcp_pool.dynamic_hosts );
 }
 
 void dhcp_service::service( Tins::DHCP *dhcp )
@@ -242,16 +245,21 @@ void dhcp_service::onSwitchUp( SwitchPtr sw )
     sw->connection()->send( fm );
 }
 
-uint32_t dhcp_service::mk_addr()
+uint32_t dhcp_service::mk_addr( uint32_t addr )
 {
     std::unordered_map< uint32_t, uint32_t >::iterator it_lease;
     
-    for( uint32_t host_addr = 1; host_addr < ntohl( ~dhcp_pool.subnet_mask ); host_addr++ )
+    uint32_t previous( ~dhcp_pool.subnet_mask &addr );
+    previous = ntohl( previous );
+    
+    for( uint32_t host_addr = previous + 1; host_addr < ntohl( ~dhcp_pool.subnet_mask ); host_addr++ )
     {
-        it_lease = lease_base.find( dhcp_pool.subnet + host_addr );
+        // it_lease = lease_base.find( dhcp_pool.subnet + host_addr );
+        it_lease = lease_base.find( htonl( ntohl( dhcp_pool.subnet ) + host_addr ));
         if( it_lease != lease_base.end())
-        {
-            if( it_lease->second > ( uint32_t )time( nullptr ))
+        {   
+            // if( it_lease->second > ( uint32_t )time( nullptr ))
+            if( it_lease->second < ( uint32_t )time( nullptr ))
                 return htonl( ntohl( dhcp_pool.subnet ) + host_addr );
             else
                 continue;
@@ -265,8 +273,6 @@ uint32_t dhcp_service::mk_addr()
 
 bool dhcp_service::check_address( uint32_t ip )
 {
-    std::cout << "check_address() \n";
-    
     struct in_addr address;
     address.s_addr = ip;
     Tins::HWAddress<6> client_hw;
@@ -275,25 +281,40 @@ bool dhcp_service::check_address( uint32_t ip )
     Tins::NetworkInterface::Info info = nic.addresses();
     
     {
-        Tins::IP *ip = new Tins::IP(  inet_ntoa( address ), info.ip_addr );
-        ip->ttl( 64 );
-        ip->flags( Tins::IP::Flags::DONT_FRAGMENT );
+        char data[] = { "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklm" };
         
-        char data[] = { "0123456789abcdefghijklmnopqrstuvwxyz01234567890ab" };
-        Tins::ICMP *icmp = new Tins::ICMP(( uint8_t* )data, sizeof( data ));
+        Tins::IP ip = Tins::IP( inet_ntoa( address ), info.ip_addr ) / Tins::ICMP(( uint8_t* )data, sizeof( data ));
+        Tins::ICMP& icmp = ip.rfind_pdu<Tins::ICMP>();
         
         srand( time( nullptr ));
-        icmp->set_echo_request(( uint16_t )rand(), 1 );
+        icmp.type( Tins::ICMP::Flags::ECHO_REQUEST );
+        icmp.id(( uint16_t )rand());
         
-        ip->inner_pdu( icmp );
+        ip.flags( Tins::IP::Flags::DONT_FRAGMENT );
+        ip.ttl( 64 );
         
         Tins::PacketSender request;
-        Tins::PDU *response = request.send_recv( *ip, nic );
+        Tins::PDU *response = request.send_recv( ip, nic );
         
         if( response == 0 )
+        {
+            // std::cout << "no reply \n";
             return false;
+        }
         else
-            return true;
+        {
+            Tins::ICMP& reply = response->rfind_pdu<Tins::ICMP>();
+            if( reply.type() == Tins::ICMP::Flags::ECHO_REPLY )
+            {
+                // std::cout << "reply type " << reply.type() << std::endl;
+                return true;
+            }
+            else
+            {
+                // std::cout << "reply type " << reply.type() << std::endl;
+                return false;
+            }
+        }
     }
     
     return true;
@@ -318,6 +339,7 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
                 it_lease = lease_base.find( it_addr->second );
                 if( it_lease != lease_base.end())
                     lease_base.erase( it_lease );
+
                 lease_base.insert({ it_addr->second, ( uint32_t )time( nullptr ) + TIME_LEASE });
                 
                 return it_addr->second;
@@ -374,9 +396,10 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
                 {
                     if( it_lease->second > ( uint32_t )time( nullptr ))
                     {
-                        uint32_t addr = mk_addr();
+                        // uint32_t addr = mk_addr( dhcp_pool.dynamic_hosts );
+                        uint32_t addr = mk_addr( 0 );
                         while( check_address( addr ))
-                            addr = mk_addr();
+                            addr = mk_addr( addr );
                         addr_base.insert({ str_hw, addr });
                         it_lease = lease_base.find( addr );
                         if( it_lease != lease_base.end())
@@ -422,9 +445,10 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
         it_addr = addr_base.find( str_hw );
         if( it_addr != addr_base.end())
         {
-            uint32_t addr = mk_addr();
+            // uint32_t addr = mk_addr( dhcp_pool.dynamic_hosts );
+            uint32_t addr = it_addr->second;
             while( check_address( addr ))
-                addr = mk_addr();
+                addr = mk_addr( addr );
             it_lease = lease_base.find( addr );
             if( it_lease != lease_base.end())
                 lease_base.erase( it_lease );
@@ -435,9 +459,10 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
         }
         else
         {
-            uint32_t addr = mk_addr();
+            // uint32_t addr = mk_addr( dhcp_pool.dynamic_hosts );
+            uint32_t addr = mk_addr( 0 );
             while( check_address( addr ))
-                addr = mk_addr();
+                addr = mk_addr( addr );
             it_lease = lease_base.find( addr );
             if( it_lease != lease_base.end())
                 lease_base.erase( it_lease );

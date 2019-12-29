@@ -58,11 +58,12 @@ namespace runos
             uint32_t broadcast;
             uint32_t time_servers[2];
             uint32_t name_servers[3];
+            uint32_t dynamic_hosts;
         };
         pool_addr_t dhcp_pool;
         
         void pool();
-        uint32_t mk_addr();
+        uint32_t mk_addr( uint32_t );
         bool check_address( uint32_t );
         uint32_t get_address( uint32_t, Tins::HWAddress<6>);
         void service( Tins::DHCP* );
