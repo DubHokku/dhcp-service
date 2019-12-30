@@ -1,11 +1,11 @@
 # dhcp-service
 
-Тестовая версия DHCP сервиса в составе openFlow контроллера RuNOS ( https://github.com/ARCCN/runos ), выполняет обрабоку запросов DISCOVER и REQUEST, отвечает пакетами OFFER и ACK. Приём и передача данных выполняется с применением OpenFlow 1.3.
+Тестовая версия DHCP сервиса в составе openFlow контроллера RuNOS ( https://github.com/ARCCN/runos ), выполняет обрабоку запросов DISCOVER и REQUEST, отвечает пакетами OFFER и ACK.
 
 
 Зависимости:
 
-libtins ( https://libtins.github.io/ ), libfluid ( http://opennetworkingfoundation.github.io/libfluid )
+libtins ( https://libtins.github.io ), libfluid ( http://opennetworkingfoundation.github.io/libfluid )
 
 используется docker контейнер runos/runos-2.0
 ( http://arccn.github.io/runos/docs-2.0/eng/11_RUNOS_InstallationGuide.html#installation-with-docker )
@@ -45,7 +45,7 @@ libtins ( https://libtins.github.io/ ), libfluid ( http://opennetworkingfoundati
     
     mininet> h1 ifconfig
 
-интерфейс для прослушивания определяется в dhcp_service.hh
+интерфейс определяется в dhcp_service.hh
 
     # define NIC "eth0" 
 

@@ -1,5 +1,4 @@
 #include "dhcp_service.hpp"
-
 #include "PacketParser.hpp"
 #include "api/Packet.hpp"
 #include <runos/core/logging.hpp>
@@ -11,7 +10,6 @@ REGISTER_APPLICATION( dhcp_service,
 {
     "controller",
     "switch-manager",
-    // "topology",
     "" })
 
 void dhcp_service::init( Loader* loader, const Config& config )
@@ -34,7 +32,7 @@ void dhcp_service::init( Loader* loader, const Config& config )
             Tins::EthernetII frame(( const uint8_t* )pi.data(), pi.data_len());
             try
             {
-                Tins::IP& ip = frame.rfind_pdu<Tins::IP>();
+                // Tins::IP& ip = frame.rfind_pdu<Tins::IP>();
                 Tins::UDP& udp = frame.rfind_pdu<Tins::UDP>();
                 if( udp.dport() == 67 )
                     dhcp = udp.find_pdu<Tins::RawPDU>()->to<Tins::DHCP>();
@@ -67,8 +65,8 @@ void dhcp_service::pool()
     inet_aton( "172.17.1.2", ( struct in_addr* )&dhcp_pool.time_servers[0]);
     inet_aton( "172.17.1.4", ( struct in_addr* )&dhcp_pool.time_servers[1]);
     
-    // dhcp_pool.dynamic_hosts = 0;
-    // dhcp_pool.dynamic_hosts = htonl( dhcp_pool.dynamic_hosts );
+    dhcp_pool.dynamic_hosts = 0; // lowest assigned host address
+    dhcp_pool.dynamic_hosts = htonl( dhcp_pool.dynamic_hosts );
 }
 
 void dhcp_service::service( Tins::DHCP *dhcp )
@@ -254,11 +252,9 @@ uint32_t dhcp_service::mk_addr( uint32_t addr )
     
     for( uint32_t host_addr = previous + 1; host_addr < ntohl( ~dhcp_pool.subnet_mask ); host_addr++ )
     {
-        // it_lease = lease_base.find( dhcp_pool.subnet + host_addr );
         it_lease = lease_base.find( htonl( ntohl( dhcp_pool.subnet ) + host_addr ));
         if( it_lease != lease_base.end())
         {   
-            // if( it_lease->second > ( uint32_t )time( nullptr ))
             if( it_lease->second < ( uint32_t )time( nullptr ))
                 return htonl( ntohl( dhcp_pool.subnet ) + host_addr );
             else
@@ -271,57 +267,46 @@ uint32_t dhcp_service::mk_addr( uint32_t addr )
     return 0;
 }
 
-bool dhcp_service::check_address( uint32_t ip )
+bool dhcp_service::check_address( uint32_t addr )
 {
     struct in_addr address;
-    address.s_addr = ip;
-    Tins::HWAddress<6> client_hw;
+    address.s_addr = addr;
     
     const Tins::NetworkInterface nic( NIC );
     Tins::NetworkInterface::Info info = nic.addresses();
     
+    char data[] = { "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklm" };
+    Tins::IP ip = Tins::IP( inet_ntoa( address ), info.ip_addr ) / Tins::ICMP(( uint8_t* )data, sizeof( data ));
+    
+    Tins::ICMP& icmp = ip.rfind_pdu<Tins::ICMP>();
+        
+    srand( time( nullptr ));
+    icmp.type( Tins::ICMP::Flags::ECHO_REQUEST );
+    icmp.id(( uint16_t )rand());
+        
+    ip.flags( Tins::IP::Flags::DONT_FRAGMENT );
+    ip.ttl( 64 );
+        
+    Tins::PacketSender request;
+    Tins::PDU *response = request.send_recv( ip, nic );
+        
+    if( response == 0 )
+        return false;
+    else
     {
-        char data[] = { "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklm" };
-        
-        Tins::IP ip = Tins::IP( inet_ntoa( address ), info.ip_addr ) / Tins::ICMP(( uint8_t* )data, sizeof( data ));
-        Tins::ICMP& icmp = ip.rfind_pdu<Tins::ICMP>();
-        
-        srand( time( nullptr ));
-        icmp.type( Tins::ICMP::Flags::ECHO_REQUEST );
-        icmp.id(( uint16_t )rand());
-        
-        ip.flags( Tins::IP::Flags::DONT_FRAGMENT );
-        ip.ttl( 64 );
-        
-        Tins::PacketSender request;
-        Tins::PDU *response = request.send_recv( ip, nic );
-        
-        if( response == 0 )
-        {
-            // std::cout << "no reply \n";
-            return false;
-        }
+        Tins::ICMP& reply = response->rfind_pdu<Tins::ICMP>();
+        if( reply.type() == Tins::ICMP::Flags::ECHO_REPLY )
+            return true;
         else
-        {
-            Tins::ICMP& reply = response->rfind_pdu<Tins::ICMP>();
-            if( reply.type() == Tins::ICMP::Flags::ECHO_REPLY )
-            {
-                // std::cout << "reply type " << reply.type() << std::endl;
-                return true;
-            }
-            else
-            {
-                // std::cout << "reply type " << reply.type() << std::endl;
-                return false;
-            }
-        }
+            return false;
     }
     
     return true;
 }
 
 uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> client_hw )
-{
+{   
+    /* use boost::bimap */
     std::unordered_map< std::string, uint32_t >::iterator it_addr;
     std::unordered_map< uint32_t, uint32_t >::iterator it_lease;
     
@@ -382,7 +367,7 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
             }
         }
         else
-        {
+        {   /* use boost::bimap */
             it_addr = std::find_if( addr_base.begin(), addr_base.end(), [&request_ip]( const std::pair< std::string, uint32_t >& test )
             {
                 if( test.second == request_ip )
@@ -396,8 +381,7 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
                 {
                     if( it_lease->second > ( uint32_t )time( nullptr ))
                     {
-                        // uint32_t addr = mk_addr( dhcp_pool.dynamic_hosts );
-                        uint32_t addr = mk_addr( 0 );
+                        uint32_t addr = mk_addr( dhcp_pool.dynamic_hosts );
                         while( check_address( addr ))
                             addr = mk_addr( addr );
                         addr_base.insert({ str_hw, addr });
@@ -445,8 +429,8 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
         it_addr = addr_base.find( str_hw );
         if( it_addr != addr_base.end())
         {
-            // uint32_t addr = mk_addr( dhcp_pool.dynamic_hosts );
             uint32_t addr = it_addr->second;
+            // cite rfc 2131
             while( check_address( addr ))
                 addr = mk_addr( addr );
             it_lease = lease_base.find( addr );
@@ -459,8 +443,7 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
         }
         else
         {
-            // uint32_t addr = mk_addr( dhcp_pool.dynamic_hosts );
-            uint32_t addr = mk_addr( 0 );
+            uint32_t addr = mk_addr( dhcp_pool.dynamic_hosts );
             while( check_address( addr ))
                 addr = mk_addr( addr );
             it_lease = lease_base.find( addr );
