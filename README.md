@@ -1,6 +1,6 @@
 # dhcp-service
 
-Тестовая версия DHCP сервиса в составе openFlow контроллера RuNOS ( https://github.com/ARCCN/runos ), выполняет обрабоку запросов DISCOVER и REQUEST, отвечает сообщениями OFFER и ACK.
+Тестовая версия DHCP сервиса в составе openFlow контроллера RuNOS ( https://github.com/ARCCN/runos ), выполняет обрабоку запросов DISCOVER и REQUEST ( - DECLINE, RELEASE, INFORM ), отвечает сообщениями OFFER и ACK ( - NAK ).
 
 
 Зависимости:
@@ -13,7 +13,7 @@
     $ uname -r
     4.19.3-200.fc28.x86_64
     
-    $ docker run -i -t -P --name runosdoc runos/runos-2.0
+    $ docker run -i -t -P --name runosdock runos/runos-2.0
     
     $ cp dhcp-service /home/runos/src/apps
     $ cd /home/runos
