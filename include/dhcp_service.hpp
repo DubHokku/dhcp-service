@@ -7,16 +7,14 @@
 #include "oxm/openflow_basic.hh"
 
 #include <iostream>
-#include <algorithm>
-#include <unordered_map>
-#include <boost/bimap.hpp>
 #include <sstream>
+#include <boost/bimap.hpp>
+#include <unordered_map>
 
 #include <tins/tins.h>
 #include <arpa/inet.h>
 
 #define NIC "eth0"
-
 #define TIME_LEASE 1712
 #define TIME_RENEWAL 856
 #define TIME_REBIND 1208
@@ -69,8 +67,7 @@ namespace runos
         uint32_t get_address( uint32_t, Tins::HWAddress<6>);
         void service( Tins::DHCP* );
         
+        boost::bimap< std::string, uint32_t > addr_base;
         std::unordered_map< uint32_t, uint32_t > lease_base;
-        // boost::bimap< std::string, uint32_t > addr_base;
-        std::unordered_map< std::string, uint32_t > addr_base;
     };
 }

@@ -10,6 +10,7 @@ REGISTER_APPLICATION( dhcp_service,
 {
     "controller",
     "switch-manager",
+    // "topology",
     "" })
 
 void dhcp_service::init( Loader* loader, const Config& config )
@@ -32,7 +33,6 @@ void dhcp_service::init( Loader* loader, const Config& config )
             Tins::EthernetII frame(( const uint8_t* )pi.data(), pi.data_len());
             try
             {
-                // Tins::IP& ip = frame.rfind_pdu<Tins::IP>();
                 Tins::UDP& udp = frame.rfind_pdu<Tins::UDP>();
                 if( udp.dport() == 67 )
                     dhcp = udp.find_pdu<Tins::RawPDU>()->to<Tins::DHCP>();
@@ -114,6 +114,7 @@ void dhcp_service::service( Tins::DHCP *dhcp )
             offer->rebind_time( TIME_REBIND );
             offer->end();
             
+            std::cout << "dhcp::offer " << inet_ntoa( in_yiaddr ) << std::endl;
             Tins::EthernetII opkt = Tins::EthernetII( src_mac, info.hw_addr ) / 
                 Tins::IP( inet_ntoa( in_yiaddr ), info.ip_addr ) / Tins::UDP( 68, 67 ) / *offer;
             
@@ -126,8 +127,8 @@ void dhcp_service::service( Tins::DHCP *dhcp )
                     str_opkt[i] = buffer.at( i );
                 
                 po.data( str_opkt, opkt.size());
-                /// of13::OutputAction output_action( in_port_, of13::OFPCML_NO_BUFFER );
-                of13::OutputAction output_action( in_port_, of13::OFPXMT_OFB_IN_PORT );
+                of13::OutputAction output_action( in_port_, of13::OFPCML_NO_BUFFER );
+                // of13::OutputAction output_action( in_port_, of13::OFPXMT_OFB_IN_PORT );
                 po.add_action( output_action );
                 switch_manager_->switch_( dpid_ )->connection()->send( po );
             }   // Send PacketOut.
@@ -197,8 +198,8 @@ void dhcp_service::service( Tins::DHCP *dhcp )
                     str_opkt[i] = buffer.at( i );
                 
                 po.data( str_opkt, opkt.size());
-                // of13::OutputAction output_action( in_port_, of13::OFPCML_NO_BUFFER );
-                of13::OutputAction output_action( in_port_, of13::OFPXMT_OFB_IN_PORT );
+                of13::OutputAction output_action( in_port_, of13::OFPCML_NO_BUFFER );
+                // of13::OutputAction output_action( in_port_, of13::OFPXMT_OFB_IN_PORT );
                 po.add_action( output_action );
                 switch_manager_->switch_( dpid_ )->connection()->send( po );
             }   // Send PacketOut.  */
@@ -306,8 +307,9 @@ bool dhcp_service::check_address( uint32_t addr )
 
 uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> client_hw )
 {   
-    /* use boost::bimap */
-    std::unordered_map< std::string, uint32_t >::iterator it_addr;
+    /* use boost::multi_index_container */
+    boost::bimap< std::string, uint32_t >::left_iterator addr_left;
+    boost::bimap< std::string, uint32_t >::right_iterator addr_right;
     std::unordered_map< uint32_t, uint32_t >::iterator it_lease;
     
     std::stringstream ss;
@@ -316,39 +318,40 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
     
     if( request_ip > 0 )
     {
-        it_addr = addr_base.find( str_hw );
-        if( it_addr != addr_base.end())
+        addr_left = addr_base.left.find( str_hw );
+        if( addr_left != addr_base.left.end())
         {
-            if( it_addr->second == request_ip )
+            if( addr_left->second == request_ip )
             {
-                it_lease = lease_base.find( it_addr->second );
+                it_lease = lease_base.find( addr_left->second );
                 if( it_lease != lease_base.end())
                     lease_base.erase( it_lease );
 
-                lease_base.insert({ it_addr->second, ( uint32_t )time( nullptr ) + TIME_LEASE });
+                lease_base.insert({ addr_left->second, ( uint32_t )time( nullptr ) + TIME_LEASE });
                 
-                return it_addr->second;
+                return addr_left->second;
             }
+
             else
             {
-                if( check_address( it_addr->second ))
-                    addr_base.erase( it_addr );
+                if( check_address( addr_left->second ))
+                    addr_base.left.erase( addr_left );
                 else
                 {
-                    it_lease = lease_base.find( it_addr->second );
+                    it_lease = lease_base.find( addr_left->second );
                     if( it_lease != lease_base.end())
                     {
                         if( it_lease->second > ( uint32_t )time( nullptr ))
                         {
                             lease_base.erase( it_lease );
-                            lease_base.insert({ it_addr->second, ( uint32_t )time( nullptr ) + TIME_LEASE });
+                            lease_base.insert({ addr_left->second, ( uint32_t )time( nullptr ) + TIME_LEASE });
                             
-                            return it_addr->second;
+                            return addr_left->second;
                         }
                         else
                         {
                             lease_base.erase( it_lease );
-                            addr_base.erase( it_addr );
+                            addr_base.left.erase( addr_left );
                             addr_base.insert({ str_hw, request_ip });
                             lease_base.insert({ request_ip, ( uint32_t )time( nullptr ) + TIME_LEASE });
                             
@@ -357,7 +360,7 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
                     }
                     else
                     {
-                        addr_base.erase( it_addr );
+                        addr_base.left.erase( addr_left );
                         addr_base.insert({ str_hw, request_ip });
                         lease_base.insert({ request_ip, ( uint32_t )time( nullptr ) + TIME_LEASE });
                         
@@ -366,15 +369,11 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
                 }
             }
         }
+
         else
-        {   /* use boost::bimap */
-            it_addr = std::find_if( addr_base.begin(), addr_base.end(), [&request_ip]( const std::pair< std::string, uint32_t >& test )
-            {
-                if( test.second == request_ip )
-                    return true;
-                return false;
-            });
-            if( it_addr != addr_base.end())
+        {
+            addr_right = addr_base.right.find( request_ip );
+            if( addr_right != addr_base.right.end())
             {
                 it_lease = lease_base.find( request_ip );
                 if( it_lease != lease_base.end())
@@ -395,7 +394,7 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
                     else
                     {
                         lease_base.erase( it_lease );
-                        addr_base.erase( it_addr );
+                        addr_base.right.erase( addr_right );
                         addr_base.insert({ str_hw, request_ip });
                         lease_base.insert({ request_ip, ( uint32_t )time( nullptr ) + TIME_LEASE });
                         
@@ -404,7 +403,7 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
                 }
                 else
                 {
-                    addr_base.erase( it_addr );
+                    addr_base.right.erase( addr_right );
                     addr_base.insert({ str_hw, request_ip });
                     lease_base.insert({ request_ip, ( uint32_t )time( nullptr ) + TIME_LEASE });
                     
@@ -426,10 +425,10 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
 
     if( request_ip == 0 )
     {
-        it_addr = addr_base.find( str_hw );
-        if( it_addr != addr_base.end())
+        addr_left = addr_base.left.find( str_hw );
+        if( addr_left != addr_base.left.end())
         {
-            uint32_t addr = it_addr->second;
+            uint32_t addr = addr_left->second;
             // cite rfc 2131
             while( check_address( addr ))
                 addr = mk_addr( addr );
@@ -455,7 +454,7 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
             return addr;
         }
     }
-    
+
     return 0;
 }
 } // namespace runos
