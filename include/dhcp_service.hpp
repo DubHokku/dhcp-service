@@ -9,6 +9,7 @@
 #include <iostream>
 #include <algorithm>
 #include <unordered_map>
+#include <boost/bimap.hpp>
 #include <sstream>
 
 #include <tins/tins.h>
@@ -69,6 +70,7 @@ namespace runos
         void service( Tins::DHCP* );
         
         std::unordered_map< uint32_t, uint32_t > lease_base;
+        // boost::bimap< std::string, uint32_t > addr_base;
         std::unordered_map< std::string, uint32_t > addr_base;
     };
 }
