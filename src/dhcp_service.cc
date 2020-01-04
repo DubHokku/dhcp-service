@@ -114,10 +114,12 @@ void dhcp_service::service( Tins::DHCP *dhcp )
             offer->rebind_time( TIME_REBIND );
             offer->end();
             
-            std::cout << "dhcp::offer " << inet_ntoa( in_yiaddr ) << std::endl;
             Tins::EthernetII opkt = Tins::EthernetII( src_mac, info.hw_addr ) / 
                 Tins::IP( inet_ntoa( in_yiaddr ), info.ip_addr ) / Tins::UDP( 68, 67 ) / *offer;
-            
+                
+            of_send( &opkt );
+
+/*
             {   // Send PacketOut.
                 of13::PacketOut po;
                 Tins::PDU::serialization_type buffer = opkt.serialize();
@@ -132,12 +134,18 @@ void dhcp_service::service( Tins::DHCP *dhcp )
                 po.add_action( output_action );
                 switch_manager_->switch_( dpid_ )->connection()->send( po );
             }   // Send PacketOut.
+*/
         }
         if( *dh_type->data_ptr() == Tins::DHCP::Flags::REQUEST )
         {
             std::cout << "DHCP::REQUEST \n";
             
             struct in_addr in_yiaddr, in_ciaddr, in_mask, in_broadcast;
+            
+            in_ciaddr.s_addr = 0; // ip клиента, указывается в случае, когда клиент .. может отвечать на запросы ARP.
+            in_mask.s_addr = dhcp_pool.subnet_mask;
+            in_broadcast.s_addr = dhcp_pool.broadcast;
+            
             
             auto dh_request_address = dhcp->search_option( Tins::DHCP::OptionTypes::DHCP_REQUESTED_ADDRESS );
             if( dh_request_address )
@@ -155,9 +163,7 @@ void dhcp_service::service( Tins::DHCP *dhcp )
                 in_yiaddr.s_addr = get_address( 0, dhcp->chaddr());
                 // mk DHCP::NAK; continue;
             
-            in_ciaddr.s_addr = 0; // ip клиента, указывается в случае, когда клиент .. может отвечать на запросы ARP.
-            in_mask.s_addr = dhcp_pool.subnet_mask;
-            in_broadcast.s_addr = dhcp_pool.broadcast;
+
             
             Tins::DHCP *ack = new Tins::DHCP;
             ack->opcode( Tins::BootP::BOOTREPLY );
@@ -189,6 +195,8 @@ void dhcp_service::service( Tins::DHCP *dhcp )
             Tins::EthernetII opkt = Tins::EthernetII( src_mac, info.hw_addr ) / 
                 Tins::IP( inet_ntoa( in_yiaddr ), info.ip_addr ) / Tins::UDP( 68, 67 ) / *ack;
             
+            of_send( &opkt );
+/*            
             {   // Send PacketOut.
                 of13::PacketOut po;
                 Tins::PDU::serialization_type buffer = opkt.serialize();
@@ -202,7 +210,8 @@ void dhcp_service::service( Tins::DHCP *dhcp )
                 // of13::OutputAction output_action( in_port_, of13::OFPXMT_OFB_IN_PORT );
                 po.add_action( output_action );
                 switch_manager_->switch_( dpid_ )->connection()->send( po );
-            }   // Send PacketOut.  */
+            }   // Send PacketOut.
+*/
         }
         if( *dh_type->data_ptr() == Tins::DHCP::Flags::OFFER )
         {
@@ -229,6 +238,40 @@ void dhcp_service::service( Tins::DHCP *dhcp )
             std::cout << "DHCP::INFORM \n";
         }
     }
+}
+
+void dhcp_service::mk_dhcp( Tins::DHCP *request, Tins::DHCP *response )
+{
+    struct in_addr in_yiaddr, in_ciaddr, in_mask, in_broadcast;
+    
+    in_ciaddr.s_addr = 0; // ip клиента, указывается в случае, когда клиент .. может отвечать на запросы ARP.
+    in_mask.s_addr = dhcp_pool.subnet_mask;
+    in_broadcast.s_addr = dhcp_pool.broadcast;
+    
+    response->opcode( Tins::BootP::BOOTREPLY );
+    response->xid( request->xid());
+    
+    response->ciaddr( inet_ntoa( in_ciaddr ));
+}
+
+void dhcp_service::of_send( Tins::EthernetII* eth )
+{
+    // Send PacketOut.
+    of13::PacketOut po;
+    Tins::PDU::serialization_type buffer = eth->serialize();
+    uint8_t* eth_str = new uint8_t[eth->size()];
+                
+    for( auto i : buffer )
+        eth_str[i] = buffer.at( i );
+                
+    po.data( eth_str, eth->size());
+    of13::OutputAction output_action( in_port_, of13::OFPCML_NO_BUFFER );
+    // of13::OutputAction output_action( in_port_, of13::OFPXMT_OFB_IN_PORT );
+    
+    po.add_action( output_action );
+    switch_manager_->switch_( dpid_ )->connection()->send( po );
+    
+    // Send PacketOut.    
 }
 
 void dhcp_service::onSwitchUp( SwitchPtr sw )

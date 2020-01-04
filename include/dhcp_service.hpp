@@ -62,10 +62,12 @@ namespace runos
         pool_addr_t dhcp_pool;
         
         void pool();
-        uint32_t mk_addr( uint32_t );
-        bool check_address( uint32_t );
-        uint32_t get_address( uint32_t, Tins::HWAddress<6>);
         void service( Tins::DHCP* );
+        void of_send( Tins::EthernetII* );
+        void mk_dhcp( Tins::DHCP*, Tins::DHCP* );
+        uint32_t mk_addr( uint32_t );
+        uint32_t get_address( uint32_t, Tins::HWAddress<6>);
+        bool check_address( uint32_t );
         
         boost::bimap< std::string, uint32_t > addr_base;
         std::unordered_map< uint32_t, uint32_t > lease_base;
