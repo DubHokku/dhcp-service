@@ -252,6 +252,31 @@ void dhcp_service::mk_dhcp( Tins::DHCP *request, Tins::DHCP *response )
     response->xid( request->xid());
     
     response->ciaddr( inet_ntoa( in_ciaddr ));
+    
+    
+    
+    
+    
+    
+    response->siaddr( info.ip_addr );
+    response->giaddr( request->giaddr());
+    response->chaddr( request->chaddr());
+    
+    response->server_identifier( info.ip_addr );
+    response->subnet_mask( inet_ntoa( in_mask ));
+    response->broadcast( inet_ntoa( in_broadcast ));
+    response->add_option({ Tins::DHCP::OptionTypes::ROUTERS, sizeof( dhcp_pool.router ), 
+        ( const unsigned char* )&dhcp_pool.router });
+    response->add_option({ Tins::DHCP::OptionTypes::DOMAIN_NAME_SERVERS, sizeof( dhcp_pool.name_servers ), 
+        ( const unsigned char* )dhcp_pool.name_servers });
+    response->add_option({ Tins::DHCP::OptionTypes::NTP_SERVERS, sizeof( dhcp_pool.time_servers ), 
+        ( const unsigned char* )dhcp_pool.time_servers });
+            
+    response->domain_name( "same_dh" );
+    response->lease_time( TIME_LEASE );
+    response->renewal_time( TIME_RENEWAL );
+    response->rebind_time( TIME_REBIND );
+    response->end();
 }
 
 void dhcp_service::of_send( Tins::EthernetII* eth )
