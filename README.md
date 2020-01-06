@@ -1,6 +1,6 @@
 # dhcp-service
 
-Тестовая версия DHCP сервиса в составе openFlow контроллера RuNOS ( https://github.com/ARCCN/runos ), выполняет обрабоку запросов DISCOVER и REQUEST ( - DECLINE, RELEASE, INFORM ), отвечает сообщениями OFFER и ACK ( - NAK ).
+Тестовая версия DHCP сервиса ( RFC 2131 )в составе openFlow контроллера RuNOS ( https://github.com/ARCCN/runos ), выполняет обрабоку запросов DISCOVER и REQUEST ( - DECLINE, RELEASE, INFORM ), отвечает сообщениями OFFER и ACK ( NAK ).
 
 
 Зависимости:

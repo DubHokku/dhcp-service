@@ -64,7 +64,7 @@ namespace runos
         void pool();
         void service( Tins::DHCP* );
         void of_send( Tins::EthernetII* );
-        void mk_dhcp( Tins::DHCP*, Tins::DHCP* );
+        void mk_reply( Tins::DHCP*, Tins::DHCP* );
         uint32_t mk_addr( uint32_t );
         uint32_t get_address( uint32_t, Tins::HWAddress<6>);
         bool check_address( uint32_t );

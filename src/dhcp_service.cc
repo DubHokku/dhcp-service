@@ -80,138 +80,28 @@ void dhcp_service::service( Tins::DHCP *dhcp )
         if( *dh_type->data_ptr() == Tins::DHCP::Flags::DISCOVER )
         {
             std::cout << "DHCP::DISCOVER \n";
-            
-            struct in_addr in_yiaddr, in_ciaddr, in_mask, in_broadcast;
-            in_yiaddr.s_addr = get_address( 0, dhcp->chaddr());
-            in_ciaddr.s_addr = 0; // ip клиента, указывается в случае, когда клиент .. может отвечать на запросы ARP.
-            in_mask.s_addr = dhcp_pool.subnet_mask;
-            in_broadcast.s_addr = dhcp_pool.broadcast;
-            
+           
             Tins::DHCP *offer = new Tins::DHCP;
-            offer->opcode( Tins::BootP::BOOTREPLY );
-            offer->xid( dhcp->xid());
             offer->type( Tins::DHCP::Flags::OFFER );
-            
-            offer->ciaddr( inet_ntoa( in_ciaddr ));
-            offer->yiaddr( inet_ntoa( in_yiaddr ));
-            offer->siaddr( info.ip_addr );
-            offer->giaddr( dhcp->giaddr());
-            offer->chaddr( dhcp->chaddr());
-            
-            offer->server_identifier( info.ip_addr );
-            offer->subnet_mask( inet_ntoa( in_mask ));
-            offer->broadcast( inet_ntoa( in_broadcast ));
-            offer->add_option({ Tins::DHCP::OptionTypes::ROUTERS, sizeof( dhcp_pool.router ), 
-                ( const unsigned char* )&dhcp_pool.router });
-            offer->add_option({ Tins::DHCP::OptionTypes::DOMAIN_NAME_SERVERS, sizeof( dhcp_pool.name_servers ), 
-                ( const unsigned char* )dhcp_pool.name_servers });
-            offer->add_option({ Tins::DHCP::OptionTypes::NTP_SERVERS, sizeof( dhcp_pool.time_servers ), 
-                ( const unsigned char* )dhcp_pool.time_servers });
-            
-            offer->domain_name( "same_dh" );
-            offer->lease_time( TIME_LEASE );
-            offer->renewal_time( TIME_RENEWAL );
-            offer->rebind_time( TIME_REBIND );
-            offer->end();
+            mk_reply( dhcp, offer );
             
             Tins::EthernetII opkt = Tins::EthernetII( src_mac, info.hw_addr ) / 
-                Tins::IP( inet_ntoa( in_yiaddr ), info.ip_addr ) / Tins::UDP( 68, 67 ) / *offer;
+                Tins::IP( offer->yiaddr(), info.ip_addr ) / Tins::UDP( 68, 67 ) / *offer;
                 
             of_send( &opkt );
-
-/*
-            {   // Send PacketOut.
-                of13::PacketOut po;
-                Tins::PDU::serialization_type buffer = opkt.serialize();
-                uint8_t* str_opkt = new uint8_t[opkt.size()];
-                
-                for( auto i : buffer )
-                    str_opkt[i] = buffer.at( i );
-                
-                po.data( str_opkt, opkt.size());
-                of13::OutputAction output_action( in_port_, of13::OFPCML_NO_BUFFER );
-                // of13::OutputAction output_action( in_port_, of13::OFPXMT_OFB_IN_PORT );
-                po.add_action( output_action );
-                switch_manager_->switch_( dpid_ )->connection()->send( po );
-            }   // Send PacketOut.
-*/
         }
         if( *dh_type->data_ptr() == Tins::DHCP::Flags::REQUEST )
         {
             std::cout << "DHCP::REQUEST \n";
-            
-            struct in_addr in_yiaddr, in_ciaddr, in_mask, in_broadcast;
-            
-            in_ciaddr.s_addr = 0; // ip клиента, указывается в случае, когда клиент .. может отвечать на запросы ARP.
-            in_mask.s_addr = dhcp_pool.subnet_mask;
-            in_broadcast.s_addr = dhcp_pool.broadcast;
-            
-            
-            auto dh_request_address = dhcp->search_option( Tins::DHCP::OptionTypes::DHCP_REQUESTED_ADDRESS );
-            if( dh_request_address )
-                in_yiaddr.s_addr = *( uint32_t* )dh_request_address->data_ptr();
-            
-            if( ntohl( in_yiaddr.s_addr ) > ntohl( dhcp_pool.subnet ))
-            {
-                if( ntohl( in_yiaddr.s_addr ) < ntohl( dhcp_pool.broadcast ))
-                    in_yiaddr.s_addr = get_address( in_yiaddr.s_addr, dhcp->chaddr());
-                else
-                    in_yiaddr.s_addr = get_address( 0, dhcp->chaddr());
-                    // mk DHCP::NAK; continue;
-            }
-            else
-                in_yiaddr.s_addr = get_address( 0, dhcp->chaddr());
-                // mk DHCP::NAK; continue;
-            
 
-            
             Tins::DHCP *ack = new Tins::DHCP;
-            ack->opcode( Tins::BootP::BOOTREPLY );
-            ack->xid( dhcp->xid());
             ack->type( Tins::DHCP::Flags::ACK );
-            
-            ack->ciaddr( inet_ntoa( in_ciaddr ));
-            ack->yiaddr( inet_ntoa( in_yiaddr ));
-            ack->siaddr( info.ip_addr );
-            ack->giaddr( dhcp->giaddr());
-            ack->chaddr( dhcp->chaddr());
-            
-            ack->server_identifier( info.ip_addr );
-            ack->subnet_mask( inet_ntoa( in_mask ));
-            ack->broadcast( inet_ntoa( in_broadcast ));
-            ack->add_option({ Tins::DHCP::OptionTypes::ROUTERS, sizeof( dhcp_pool.router ), 
-                ( const unsigned char* )&dhcp_pool.router });
-            ack->add_option({ Tins::DHCP::OptionTypes::DOMAIN_NAME_SERVERS, sizeof( dhcp_pool.name_servers ), 
-                ( const unsigned char* )dhcp_pool.name_servers });
-            ack->add_option({ Tins::DHCP::OptionTypes::NTP_SERVERS, sizeof( dhcp_pool.time_servers ), 
-                ( const unsigned char* )dhcp_pool.time_servers });
-            
-            ack->domain_name( "same_dh" );
-            ack->lease_time( TIME_LEASE );
-            ack->renewal_time( TIME_RENEWAL );
-            ack->rebind_time( TIME_REBIND );
-            ack->end();
-            
+            mk_reply( dhcp, ack );
+         
             Tins::EthernetII opkt = Tins::EthernetII( src_mac, info.hw_addr ) / 
-                Tins::IP( inet_ntoa( in_yiaddr ), info.ip_addr ) / Tins::UDP( 68, 67 ) / *ack;
-            
+                Tins::IP( ack->yiaddr(), info.ip_addr ) / Tins::UDP( 68, 67 ) / *ack;
+                
             of_send( &opkt );
-/*            
-            {   // Send PacketOut.
-                of13::PacketOut po;
-                Tins::PDU::serialization_type buffer = opkt.serialize();
-                uint8_t* str_opkt = new uint8_t[opkt.size()];
-                
-                for( auto i : buffer )
-                    str_opkt[i] = buffer.at( i );
-                
-                po.data( str_opkt, opkt.size());
-                of13::OutputAction output_action( in_port_, of13::OFPCML_NO_BUFFER );
-                // of13::OutputAction output_action( in_port_, of13::OFPXMT_OFB_IN_PORT );
-                po.add_action( output_action );
-                switch_manager_->switch_( dpid_ )->connection()->send( po );
-            }   // Send PacketOut.
-*/
         }
         if( *dh_type->data_ptr() == Tins::DHCP::Flags::OFFER )
         {
@@ -240,8 +130,10 @@ void dhcp_service::service( Tins::DHCP *dhcp )
     }
 }
 
-void dhcp_service::mk_dhcp( Tins::DHCP *request, Tins::DHCP *response )
+void dhcp_service::mk_reply( Tins::DHCP *request, Tins::DHCP *response )
 {
+    Tins::NetworkInterface nic( NIC );
+    Tins::NetworkInterface::Info info = nic.addresses();
     struct in_addr in_yiaddr, in_ciaddr, in_mask, in_broadcast;
     
     in_ciaddr.s_addr = 0; // ip клиента, указывается в случае, когда клиент .. может отвечать на запросы ARP.
@@ -251,13 +143,33 @@ void dhcp_service::mk_dhcp( Tins::DHCP *request, Tins::DHCP *response )
     response->opcode( Tins::BootP::BOOTREPLY );
     response->xid( request->xid());
     
+    auto dh_request_address = request->search_option( Tins::DHCP::OptionTypes::DHCP_REQUESTED_ADDRESS );
+    if( dh_request_address )
+    {
+        in_yiaddr.s_addr = *( uint32_t* )dh_request_address->data_ptr();
+        std::cout << "\trequest " << inet_ntoa( in_yiaddr ) << " " << Tins::HWAddress<6>( request->chaddr()) << std::endl;
+        
+        if( ntohl( in_yiaddr.s_addr ) > ntohl( dhcp_pool.subnet ))
+        {
+            if( ntohl( in_yiaddr.s_addr ) < ntohl( dhcp_pool.broadcast ))
+                in_yiaddr.s_addr = get_address( in_yiaddr.s_addr, request->chaddr());
+            else
+            {
+                in_yiaddr.s_addr = get_address( 0, request->chaddr());
+                response->type( Tins::DHCP::Flags::NAK );
+            }
+        }
+        else
+        {
+            in_yiaddr.s_addr = get_address( 0, request->chaddr());
+            response->type( Tins::DHCP::Flags::NAK );
+        }
+    }
+    else
+        in_yiaddr.s_addr = get_address( 0, request->chaddr());
+   
+    response->yiaddr( inet_ntoa( in_yiaddr ));
     response->ciaddr( inet_ntoa( in_ciaddr ));
-    
-    
-    
-    
-    
-    
     response->siaddr( info.ip_addr );
     response->giaddr( request->giaddr());
     response->chaddr( request->chaddr());
@@ -277,6 +189,8 @@ void dhcp_service::mk_dhcp( Tins::DHCP *request, Tins::DHCP *response )
     response->renewal_time( TIME_RENEWAL );
     response->rebind_time( TIME_REBIND );
     response->end();
+    
+    std::cout << "\tresponse " << inet_ntoa( in_yiaddr ) << " " << Tins::HWAddress<6>( request->chaddr()) << std::endl;
 }
 
 void dhcp_service::of_send( Tins::EthernetII* eth )
