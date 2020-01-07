@@ -10,6 +10,7 @@ REGISTER_APPLICATION( dhcp_service,
 {
     "controller",
     "switch-manager",
+    // "l2-learning-switch",
     // "topology",
     "" })
 
@@ -17,6 +18,9 @@ void dhcp_service::init( Loader* loader, const Config& config )
 {
     switch_manager_ = SwitchManager::get( loader );
     connect( switch_manager_, &SwitchManager::switchUp, this, &dhcp_service::onSwitchUp );
+    
+    // auto data_base = std::make_shared<runos::HostsDatabase>();
+    // data_base llc;
     
     pool();
     handler_ = Controller::get( loader )->register_handler
@@ -26,8 +30,19 @@ void dhcp_service::init( Loader* loader, const Config& config )
             PacketParser pp( pi );
             runos::Packet& pkt( pp );
             
-            in_port_ = pkt.load( ofb::in_port );
+            src_mac_ = pkt.load( oxm::eth_src());
+            // src_mac_ = pkt.load( ofb::eth_src );
+            
+            dst_mac_ = pkt.load( oxm::eth_dst());
+            // dst_mac_ = pkt.load( ofb::eth_dst );
+            
+            in_port_ = pkt.load( oxm::in_port());
+            // in_port_ = pkt.load( ofb::in_port );
+            
             dpid_ = ofconn->dpid();
+            
+            // auto target_port = data_base->getPort( dpid_, dst_mac_ );
+            // auto target_port = runos::HostsDatabase::getPort( dpid_, dst_mac_ );
             
             Tins::DHCP dhcp;
             Tins::EthernetII frame(( const uint8_t* )pi.data(), pi.data_len());
@@ -147,7 +162,8 @@ void dhcp_service::mk_reply( Tins::DHCP *request, Tins::DHCP *response )
     if( dh_request_address )
     {
         in_yiaddr.s_addr = *( uint32_t* )dh_request_address->data_ptr();
-        std::cout << "\trequest " << inet_ntoa( in_yiaddr ) << " " << Tins::HWAddress<6>( request->chaddr()) << std::endl;
+        std::cout << "\trequest " << inet_ntoa( in_yiaddr ) << " " 
+            << Tins::HWAddress<6>( request->chaddr()) << std::endl;
         
         if( ntohl( in_yiaddr.s_addr ) > ntohl( dhcp_pool.subnet ))
         {
@@ -190,11 +206,14 @@ void dhcp_service::mk_reply( Tins::DHCP *request, Tins::DHCP *response )
     response->rebind_time( TIME_REBIND );
     response->end();
     
-    std::cout << "\tresponse " << inet_ntoa( in_yiaddr ) << " " << Tins::HWAddress<6>( request->chaddr()) << std::endl;
+    std::cout << "\tresponse " << inet_ntoa( in_yiaddr ) << " " 
+        << Tins::HWAddress<6>( request->chaddr()) << std::endl;
 }
 
 void dhcp_service::of_send( Tins::EthernetII* eth )
 {
+    // auto target_port = data_base->getPort( dpid_, dst_mac_ );
+    
     // Send PacketOut.
     of13::PacketOut po;
     Tins::PDU::serialization_type buffer = eth->serialize();
@@ -205,12 +224,40 @@ void dhcp_service::of_send( Tins::EthernetII* eth )
                 
     po.data( eth_str, eth->size());
     of13::OutputAction output_action( in_port_, of13::OFPCML_NO_BUFFER );
+    // of13::OutputAction output_action( target_port, of13::OFPCML_NO_BUFFER );
     // of13::OutputAction output_action( in_port_, of13::OFPXMT_OFB_IN_PORT );
     
     po.add_action( output_action );
     switch_manager_->switch_( dpid_ )->connection()->send( po );
     
-    // Send PacketOut.    
+    // Send PacketOut.
+/*        
+    {   // Create FlowMod.
+        of13::FlowMod fm;
+        fm.command( of13::OFPFC_ADD );
+        fm.table_id( 0 );
+        fm.priority( 2 );
+        std::stringstream ss;
+        fm.idle_timeout( uint64_t( 60 ));
+        fm.hard_timeout( uint64_t( 1800 ));
+
+        ss.str( std::string());
+        ss.clear();
+        ss << src_mac_;
+        fm.add_oxm_field( new of13::EthSrc{ fluid_msg::EthAddress( ss.str())});
+        ss.str( std::string());
+        ss.clear();
+        ss << dst_mac_;
+        fm.add_oxm_field( new of13::EthDst{ fluid_msg::EthAddress(ss.str())});
+
+        of13::ApplyActions applyActions;
+        // of13::OutputAction output_action( target_port, of13::OFPCML_NO_BUFFER );
+        of13::OutputAction output_action( in_port_, of13::OFPCML_NO_BUFFER );
+        applyActions.add_action( output_action );
+        fm.add_instruction( applyActions );
+        switch_manager_->switch_( dpid_ )->connection()->send( fm );
+    }   // Create FlowMod.
+*/
 }
 
 void dhcp_service::onSwitchUp( SwitchPtr sw )
@@ -250,6 +297,33 @@ uint32_t dhcp_service::mk_addr( uint32_t addr )
     return 0;
 }
 
+bool dhcp_service::of_check_address( uint32_t addr )
+{
+    struct in_addr address;
+    address.s_addr = addr;
+    // of13::ICMPv4Type request;
+    // request.value( uint8_t value );
+    
+    of13::PacketOut po;
+    po.msg_type( of13::OFPT_ECHO_REQUEST );
+    // po.msg_type( 2 );
+    // po.data( eth_str, eth->size());
+    
+    of13::OutputAction output_action( of13::OFPP_ALL, of13::OFPCML_NO_BUFFER );
+    po.add_action( output_action );
+    
+    std::cout << "of check " << inet_ntoa( address ) << std::endl;
+    
+    // switch_manager_->switch_( dpid_ )->connection()->send( po );
+    
+    return true;
+}
+
+bool dhcp_service::arp_check_address( uint32_t addr )
+{
+    return true;
+}
+
 bool dhcp_service::check_address( uint32_t addr )
 {
     struct in_addr address;
@@ -285,6 +359,7 @@ bool dhcp_service::check_address( uint32_t addr )
     }
     
     return true;
+
 }
 
 uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> client_hw )

@@ -6,6 +6,7 @@
 #include "api/SwitchFwd.hpp"
 #include "oxm/openflow_basic.hh"
 
+
 #include <iostream>
 #include <sstream>
 #include <boost/bimap.hpp>
@@ -22,13 +23,18 @@
 namespace runos
 {
     using SwitchPtr = safe::shared_ptr<Switch>;
+    // using data_base = std::make_shared<HostsDatabase>;
+    
     namespace of13 = fluid_msg::of13;
+    // using ofb;
+/*
     namespace ofb
     {
         constexpr auto in_port = oxm::in_port();
-        // constexpr auto eth_src = oxm::eth_src();
+        constexpr auto eth_src = oxm::eth_src();
+        constexpr auto eth_dst = oxm::eth_dst();
     }
-    
+*/    
     class dhcp_service : public Application
     {
         Q_OBJECT
@@ -46,6 +52,8 @@ namespace runos
         
         uint64_t dpid_;
         uint32_t in_port_;
+        ethaddr src_mac_;
+        ethaddr dst_mac_;
         // ethaddr src_mac_;
         Tins::HWAddress<6> src_mac;
         
@@ -67,6 +75,9 @@ namespace runos
         void mk_reply( Tins::DHCP*, Tins::DHCP* );
         uint32_t mk_addr( uint32_t );
         uint32_t get_address( uint32_t, Tins::HWAddress<6>);
+        
+        bool of_check_address( uint32_t );
+        bool arp_check_address( uint32_t );
         bool check_address( uint32_t );
         
         boost::bimap< std::string, uint32_t > addr_base;

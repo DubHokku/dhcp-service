@@ -1,6 +1,6 @@
 # dhcp-service
 
-Тестовая версия DHCP сервиса ( RFC 2131 )в составе openFlow контроллера RuNOS ( https://github.com/ARCCN/runos ), выполняет обрабоку запросов DISCOVER и REQUEST ( - DECLINE, RELEASE, INFORM ), отвечает сообщениями OFFER и ACK ( NAK ).
+Тестовая версия DHCP сервиса ( RFC 2131 ), приложение к п.о. openFlow контроллера RuNOS ( https://github.com/ARCCN/runos ), выполняет обрабоку сообщений DISCOVER и REQUEST ( - DECLINE, RELEASE, INFORM ), отвечает -- OFFER и ACK ( NAK ).
 
 
 Зависимости:
@@ -31,7 +31,7 @@
     
 Проверка:
 
-с применением эмулятора mininet ( https://github.com/mininet/mininet )
+с эмулятором mininet ( https://github.com/mininet/mininet )
 
     # mn --topo linear,4 --switch ovsk,protocols=OpenFlow13 --controller remote,ip=172.17.0.4,port=6653
     
@@ -46,4 +46,4 @@
 
     # define NIC "eth0" 
 
-настройка зоны в runos::dhcp_service::pool()
+настройка зоны -- runos::dhcp_service::pool()
