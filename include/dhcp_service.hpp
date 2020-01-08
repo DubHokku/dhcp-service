@@ -75,9 +75,10 @@ namespace runos
         void mk_reply( Tins::DHCP*, Tins::DHCP* );
         uint32_t mk_addr( uint32_t );
         uint32_t get_address( uint32_t, Tins::HWAddress<6>);
-        
-        bool of_check_address( uint32_t );
-        bool arp_check_address( uint32_t );
+
+        bool arp_resolve( uint32_t, Tins::HWAddress<6>* );
+        bool icmp_echo( uint32_t );
+        bool of_echo( uint32_t );
         bool check_address( uint32_t );
         
         boost::bimap< std::string, uint32_t > addr_base;

@@ -80,7 +80,7 @@ void dhcp_service::pool()
     inet_aton( "172.17.1.2", ( struct in_addr* )&dhcp_pool.time_servers[0]);
     inet_aton( "172.17.1.4", ( struct in_addr* )&dhcp_pool.time_servers[1]);
     
-    dhcp_pool.dynamic_hosts = 0; // lowest assigned host address
+    dhcp_pool.dynamic_hosts = 79; // lowest assigned host address
     dhcp_pool.dynamic_hosts = htonl( dhcp_pool.dynamic_hosts );
 }
 
@@ -297,37 +297,40 @@ uint32_t dhcp_service::mk_addr( uint32_t addr )
     return 0;
 }
 
-bool dhcp_service::of_check_address( uint32_t addr )
+bool dhcp_service::arp_resolve( uint32_t addr, Tins::HWAddress<6>* hw_addr )
 {
     struct in_addr address;
     address.s_addr = addr;
-    // of13::ICMPv4Type request;
-    // request.value( uint8_t value );
+    // Tins::HWAddress<6> client_hw;
     
-    of13::PacketOut po;
-    po.msg_type( of13::OFPT_ECHO_REQUEST );
-    // po.msg_type( 2 );
-    // po.data( eth_str, eth->size());
+    std::cout << "arp_resolve( " << inet_ntoa( address ) << " )\n";
     
-    of13::OutputAction output_action( of13::OFPP_ALL, of13::OFPCML_NO_BUFFER );
-    po.add_action( output_action );
     
-    std::cout << "of check " << inet_ntoa( address ) << std::endl;
-    
-    // switch_manager_->switch_( dpid_ )->connection()->send( po );
-    
+    Tins::PacketSender sender;
+    sender.default_interface( NIC );
+    try
+    {
+        // client_hw = Tins::Utils::resolve_hwaddr( inet_ntoa( address ), sender );
+        *hw_addr = Tins::Utils::resolve_hwaddr( inet_ntoa( address ), sender );
+        std::cout << "arp_resolve() have response \n";
+        
+        return true;
+    }
+    catch( std::exception &ex )
+    {
+        std::cout << "arp_resolve() response timeout \n";
+        return false;
+    }
+
     return true;
 }
 
-bool dhcp_service::arp_check_address( uint32_t addr )
-{
-    return true;
-}
-
-bool dhcp_service::check_address( uint32_t addr )
+bool dhcp_service::icmp_echo( uint32_t addr )
 {
     struct in_addr address;
     address.s_addr = addr;
+    
+    std::cout << "icmp_echo( " << inet_ntoa( address ) << " )\n";
     
     const Tins::NetworkInterface nic( NIC );
     Tins::NetworkInterface::Info info = nic.addresses();
@@ -360,6 +363,46 @@ bool dhcp_service::check_address( uint32_t addr )
     
     return true;
 
+}
+
+bool dhcp_service::of_echo( uint32_t addr )
+{
+    struct in_addr address;
+    address.s_addr = addr;
+    
+    std::cout << "of_echo( " << inet_ntoa( address ) << " )\n";
+    
+    return false;
+    
+    // of13::ICMPv4Type request;
+    // request.value( uint8_t value );
+    
+    of13::PacketOut po;
+    po.msg_type( of13::OFPT_ECHO_REQUEST );
+    // po.msg_type( 2 );
+    // po.data( eth_str, eth->size());
+    
+    of13::OutputAction output_action( of13::OFPP_ALL, of13::OFPCML_NO_BUFFER );
+    po.add_action( output_action );
+    
+    
+    // switch_manager_->switch_( dpid_ )->connection()->send( po );
+    
+    return true;
+}
+
+bool dhcp_service::check_address( uint32_t addr )
+{
+    if( arp_resolve( addr, nullptr ))
+        return true;
+    
+    if( icmp_echo( addr ))
+        return true;
+    
+    if( of_echo( addr ))
+        return true;
+    
+    return false;
 }
 
 uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> client_hw )
