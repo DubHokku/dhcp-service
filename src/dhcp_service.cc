@@ -95,28 +95,76 @@ void dhcp_service::service( Tins::DHCP *dhcp )
         if( *dh_type->data_ptr() == Tins::DHCP::Flags::DISCOVER )
         {
             std::cout << "DHCP::DISCOVER \n";
-           
+            
+            struct in_addr in_yiaddr;
+            
             Tins::DHCP *offer = new Tins::DHCP;
             offer->type( Tins::DHCP::Flags::OFFER );
+            offer->padding( htons( 128 ));
+            
+            auto dh_request_address = dhcp->search_option( Tins::DHCP::OptionTypes::DHCP_REQUESTED_ADDRESS );
+            if( dh_request_address )
+            {
+                in_yiaddr.s_addr = *( uint32_t* )dh_request_address->data_ptr();
+                std::cout << "\trequest " << inet_ntoa( in_yiaddr ) << std::endl;
+                
+                if( in_yiaddr.s_addr == 0 )
+                    in_yiaddr.s_addr = get_address( 0, dhcp->chaddr());
+                else
+                {
+                    if( check_address( in_yiaddr.s_addr ))
+                        in_yiaddr.s_addr = 0;
+                    else
+                        in_yiaddr.s_addr = get_address( in_yiaddr.s_addr, dhcp->chaddr());
+                    if( in_yiaddr.s_addr == 0 )
+                        offer->type( Tins::DHCP::Flags::NAK );
+                }
+            }
+            else
+                in_yiaddr.s_addr = get_address( 0, dhcp->chaddr());
+            
+            offer->yiaddr( inet_ntoa( in_yiaddr ));
             mk_reply( dhcp, offer );
             
-            Tins::EthernetII opkt = Tins::EthernetII( src_mac, info.hw_addr ) / 
+            // Tins::EthernetII opkt = Tins::EthernetII( src_mac, info.hw_addr ) /
+            Tins::EthernetII opkt = Tins::EthernetII( dhcp->chaddr(), info.hw_addr ) / 
                 Tins::IP( offer->yiaddr(), info.ip_addr ) / Tins::UDP( 68, 67 ) / *offer;
                 
+            std::cout << "\tresponse " << inet_ntoa( in_yiaddr ) << std::endl;
             of_send( &opkt );
         }
         if( *dh_type->data_ptr() == Tins::DHCP::Flags::REQUEST )
         {
             std::cout << "DHCP::REQUEST \n";
 
+            struct in_addr in_yiaddr;
+            
             Tins::DHCP *ack = new Tins::DHCP;
             ack->type( Tins::DHCP::Flags::ACK );
-            mk_reply( dhcp, ack );
-         
-            Tins::EthernetII opkt = Tins::EthernetII( src_mac, info.hw_addr ) / 
-                Tins::IP( ack->yiaddr(), info.ip_addr ) / Tins::UDP( 68, 67 ) / *ack;
-                
-            of_send( &opkt );
+            
+            auto dh_request_address = dhcp->search_option( Tins::DHCP::OptionTypes::DHCP_REQUESTED_ADDRESS );
+            if( dh_request_address )
+            {
+                in_yiaddr.s_addr = *( uint32_t* )dh_request_address->data_ptr();
+                in_yiaddr.s_addr = get_address( in_yiaddr.s_addr, dhcp->chaddr());
+            }
+            else
+                in_yiaddr.s_addr = 0;
+            
+            if( in_yiaddr.s_addr == 0 )
+                ack->type( Tins::DHCP::Flags::NAK );
+            
+            ack->yiaddr( inet_ntoa( in_yiaddr ));
+
+            // if( dhcp->siaddr() == info.ip_addr )
+            // {
+                mk_reply( dhcp, ack );
+                // Tins::EthernetII opkt = Tins::EthernetII( src_mac, info.hw_addr ) / 
+                Tins::EthernetII opkt = Tins::EthernetII( dhcp->chaddr(), info.hw_addr ) / 
+                    Tins::IP( ack->yiaddr(), info.ip_addr ) / Tins::UDP( 68, 67 ) / *ack;
+                    
+                of_send( &opkt );
+            // }   
         }
         if( *dh_type->data_ptr() == Tins::DHCP::Flags::OFFER )
         {
@@ -149,7 +197,8 @@ void dhcp_service::mk_reply( Tins::DHCP *request, Tins::DHCP *response )
 {
     Tins::NetworkInterface nic( NIC );
     Tins::NetworkInterface::Info info = nic.addresses();
-    struct in_addr in_yiaddr, in_ciaddr, in_mask, in_broadcast;
+    // struct in_addr in_yiaddr, in_ciaddr, in_mask, in_broadcast;
+    struct in_addr in_ciaddr, in_mask, in_broadcast;
     
     in_ciaddr.s_addr = 0; // ip клиента, указывается в случае, когда клиент .. может отвечать на запросы ARP.
     in_mask.s_addr = dhcp_pool.subnet_mask;
@@ -157,34 +206,7 @@ void dhcp_service::mk_reply( Tins::DHCP *request, Tins::DHCP *response )
     
     response->opcode( Tins::BootP::BOOTREPLY );
     response->xid( request->xid());
-    
-    auto dh_request_address = request->search_option( Tins::DHCP::OptionTypes::DHCP_REQUESTED_ADDRESS );
-    if( dh_request_address )
-    {
-        in_yiaddr.s_addr = *( uint32_t* )dh_request_address->data_ptr();
-        std::cout << "\trequest " << inet_ntoa( in_yiaddr ) << " " 
-            << Tins::HWAddress<6>( request->chaddr()) << std::endl;
-        
-        if( ntohl( in_yiaddr.s_addr ) > ntohl( dhcp_pool.subnet ))
-        {
-            if( ntohl( in_yiaddr.s_addr ) < ntohl( dhcp_pool.broadcast ))
-                in_yiaddr.s_addr = get_address( in_yiaddr.s_addr, request->chaddr());
-            else
-            {
-                in_yiaddr.s_addr = get_address( 0, request->chaddr());
-                response->type( Tins::DHCP::Flags::NAK );
-            }
-        }
-        else
-        {
-            in_yiaddr.s_addr = get_address( 0, request->chaddr());
-            response->type( Tins::DHCP::Flags::NAK );
-        }
-    }
-    else
-        in_yiaddr.s_addr = get_address( 0, request->chaddr());
-   
-    response->yiaddr( inet_ntoa( in_yiaddr ));
+
     response->ciaddr( inet_ntoa( in_ciaddr ));
     response->siaddr( info.ip_addr );
     response->giaddr( request->giaddr());
@@ -205,23 +227,28 @@ void dhcp_service::mk_reply( Tins::DHCP *request, Tins::DHCP *response )
     response->renewal_time( TIME_RENEWAL );
     response->rebind_time( TIME_REBIND );
     response->end();
-    
+/*    
     std::cout << "\tresponse " << inet_ntoa( in_yiaddr ) << " " 
-        << Tins::HWAddress<6>( request->chaddr()) << std::endl;
+        << Tins::HWAddress<6>( request->chaddr()) << std::endl; */
 }
 
 void dhcp_service::of_send( Tins::EthernetII* eth )
 {
     // auto target_port = data_base->getPort( dpid_, dst_mac_ );
+    std::cout << "of_send() eth->dst_addr() " << eth->dst_addr() << std::endl;
     
     // Send PacketOut.
     of13::PacketOut po;
     Tins::PDU::serialization_type buffer = eth->serialize();
     uint8_t* eth_str = new uint8_t[eth->size()];
                 
-    for( auto i : buffer )
+    // for( auto i : buffer )
+    for( unsigned i = 0; i < eth->size(); i++ )
         eth_str[i] = buffer.at( i );
-                
+    
+    std::cout << "buf " << std::dec << ( int )eth_str[0] << ":" <<  ( int )eth_str[1] << ":" << ( int )eth_str[2] << ":" <<
+         ( int )eth_str[3] << ":" << ( int )eth_str[4] << ":" << ( int )eth_str[5] << std::endl;
+         
     po.data( eth_str, eth->size());
     of13::OutputAction output_action( in_port_, of13::OFPCML_NO_BUFFER );
     // of13::OutputAction output_action( target_port, of13::OFPCML_NO_BUFFER );
@@ -230,34 +257,6 @@ void dhcp_service::of_send( Tins::EthernetII* eth )
     po.add_action( output_action );
     switch_manager_->switch_( dpid_ )->connection()->send( po );
     
-    // Send PacketOut.
-/*        
-    {   // Create FlowMod.
-        of13::FlowMod fm;
-        fm.command( of13::OFPFC_ADD );
-        fm.table_id( 0 );
-        fm.priority( 2 );
-        std::stringstream ss;
-        fm.idle_timeout( uint64_t( 60 ));
-        fm.hard_timeout( uint64_t( 1800 ));
-
-        ss.str( std::string());
-        ss.clear();
-        ss << src_mac_;
-        fm.add_oxm_field( new of13::EthSrc{ fluid_msg::EthAddress( ss.str())});
-        ss.str( std::string());
-        ss.clear();
-        ss << dst_mac_;
-        fm.add_oxm_field( new of13::EthDst{ fluid_msg::EthAddress(ss.str())});
-
-        of13::ApplyActions applyActions;
-        // of13::OutputAction output_action( target_port, of13::OFPCML_NO_BUFFER );
-        of13::OutputAction output_action( in_port_, of13::OFPCML_NO_BUFFER );
-        applyActions.add_action( output_action );
-        fm.add_instruction( applyActions );
-        switch_manager_->switch_( dpid_ )->connection()->send( fm );
-    }   // Create FlowMod.
-*/
 }
 
 void dhcp_service::onSwitchUp( SwitchPtr sw )
@@ -301,18 +300,20 @@ bool dhcp_service::arp_resolve( uint32_t addr, Tins::HWAddress<6>* hw_addr )
 {
     struct in_addr address;
     address.s_addr = addr;
-    // Tins::HWAddress<6> client_hw;
+    Tins::HWAddress<6> client_hw;
     
-    std::cout << "arp_resolve( " << inet_ntoa( address ) << " )\n";
+    std::cout << "arp_resolve( " << inet_ntoa( address ) << " ) \t";
     
     
     Tins::PacketSender sender;
     sender.default_interface( NIC );
     try
     {
-        // client_hw = Tins::Utils::resolve_hwaddr( inet_ntoa( address ), sender );
-        *hw_addr = Tins::Utils::resolve_hwaddr( inet_ntoa( address ), sender );
-        std::cout << "arp_resolve() have response \n";
+        client_hw = Tins::Utils::resolve_hwaddr( inet_ntoa( address ), sender );
+        // hw_addr = &client_hw;
+        
+        // std::cout << "arp_resolve() have response \n";
+        std::cout << "response " << client_hw << std::endl;
         
         return true;
     }
@@ -330,14 +331,18 @@ bool dhcp_service::icmp_echo( uint32_t addr )
     struct in_addr address;
     address.s_addr = addr;
     
-    std::cout << "icmp_echo( " << inet_ntoa( address ) << " )\n";
+    std::cout << "icmp_echo( " << inet_ntoa( address ) << " ) \t";
     
     const Tins::NetworkInterface nic( NIC );
     Tins::NetworkInterface::Info info = nic.addresses();
     
     char data[] = { "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklm" };
-    Tins::IP ip = Tins::IP( inet_ntoa( address ), info.ip_addr ) / Tins::ICMP(( uint8_t* )data, sizeof( data ));
+    // Tins::IP ip = Tins::IP( inet_ntoa( address ), info.ip_addr ) / Tins::ICMP(( uint8_t* )data, sizeof( data ));
+    Tins::EthernetII eth = Tins::EthernetII( "ff:ff:ff:ff:ff:ff", info.hw_addr ) / 
+        Tins::IP( inet_ntoa( address ), info.ip_addr ) / 
+        Tins::ICMP(( uint8_t* )data, sizeof( data ));
     
+    Tins::IP& ip = eth.rfind_pdu<Tins::IP>();
     Tins::ICMP& icmp = ip.rfind_pdu<Tins::ICMP>();
         
     srand( time( nullptr ));
@@ -348,17 +353,26 @@ bool dhcp_service::icmp_echo( uint32_t addr )
     ip.ttl( 64 );
         
     Tins::PacketSender request;
-    Tins::PDU *response = request.send_recv( ip, nic );
+    // Tins::PDU *response = request.send_recv( ip, nic );
+    Tins::PDU *response = request.send_recv( eth, nic );
+    
+    // std::cout << "icmp_echo are sent \n";
         
     if( response == 0 )
+    {   std::cout << "no reply \n";
         return false;
+    }
     else
-    {
+    {   // std::cout << "icmp have reply\n";
         Tins::ICMP& reply = response->rfind_pdu<Tins::ICMP>();
         if( reply.type() == Tins::ICMP::Flags::ECHO_REPLY )
+        {   std::cout << "ICMP::Flags::ECHO_REPLY \n";
             return true;
+        }
         else
+        {   std::cout << "reply " << reply.type() << std::endl;
             return false;
+        }
     }
     
     return true;
@@ -371,24 +385,11 @@ bool dhcp_service::of_echo( uint32_t addr )
     address.s_addr = addr;
     
     std::cout << "of_echo( " << inet_ntoa( address ) << " )\n";
+    const Tins::NetworkInterface nic( NIC );
+    Tins::NetworkInterface::Info info = nic.addresses();
     
     return false;
     
-    // of13::ICMPv4Type request;
-    // request.value( uint8_t value );
-    
-    of13::PacketOut po;
-    po.msg_type( of13::OFPT_ECHO_REQUEST );
-    // po.msg_type( 2 );
-    // po.data( eth_str, eth->size());
-    
-    of13::OutputAction output_action( of13::OFPP_ALL, of13::OFPCML_NO_BUFFER );
-    po.add_action( output_action );
-    
-    
-    // switch_manager_->switch_( dpid_ )->connection()->send( po );
-    
-    return true;
 }
 
 bool dhcp_service::check_address( uint32_t addr )
@@ -417,7 +418,12 @@ uint32_t dhcp_service::get_address( uint32_t request_ip, Tins::HWAddress<6> clie
     std::string str_hw( ss.str());
     
     if( request_ip > 0 )
-    {
+    {   
+        if( ntohl( request_ip ) <= ntohl( dhcp_pool.subnet ))
+            return 0;
+        if( ntohl( request_ip ) >= ntohl( dhcp_pool.broadcast ))
+            return 0; 
+        
         addr_left = addr_base.left.find( str_hw );
         if( addr_left != addr_base.left.end())
         {
