@@ -89,6 +89,7 @@ void dhcp_service::service( Tins::DHCP *dhcp )
             
             struct in_addr in_yiaddr;
             Tins::DHCP *offer = new Tins::DHCP;
+            offer->type( Tins::DHCP::Flags::OFFER );
             
             auto dh_request_address = dhcp->search_option( Tins::DHCP::OptionTypes::DHCP_REQUESTED_ADDRESS );
             if( dh_request_address )
@@ -105,14 +106,12 @@ void dhcp_service::service( Tins::DHCP *dhcp )
                     else
                         in_yiaddr.s_addr = get_address( in_yiaddr.s_addr, dhcp->chaddr());
                     if( in_yiaddr.s_addr == 0 )
-                        // offer->type( Tins::DHCP::Flags::NAK );
-                        offer->type(( Tins::DHCP::Flags )6 );
+                        offer->type( Tins::DHCP::Flags::NAK );
                 }
             }
             else
                 in_yiaddr.s_addr = get_address( 0, dhcp->chaddr());
             
-            offer->type( Tins::DHCP::Flags::OFFER );
             offer->padding( htons( 128 ));
             offer->yiaddr( inet_ntoa( in_yiaddr ));
             mk_reply( dhcp, offer );
@@ -131,30 +130,39 @@ void dhcp_service::service( Tins::DHCP *dhcp )
             Tins::DHCP *ack = new Tins::DHCP;
             
             auto dh_request_address = dhcp->search_option( Tins::DHCP::OptionTypes::DHCP_REQUESTED_ADDRESS );
-            if( dhcp->server_identifier() == info.ip_addr )
+            if( dh_request_address )
             {
-                if( dh_request_address )
-                {
-                    in_yiaddr.s_addr = *( uint32_t* )dh_request_address->data_ptr();
-                    in_yiaddr.s_addr = get_address( in_yiaddr.s_addr, dhcp->chaddr());
-                }
-                else
-                    in_yiaddr.s_addr = 0;
+                in_yiaddr.s_addr = *( uint32_t* )dh_request_address->data_ptr();
+                in_yiaddr.s_addr = get_address( in_yiaddr.s_addr, dhcp->chaddr());
+            }
+            else
+                in_yiaddr.s_addr = 0;
             
-                if( in_yiaddr.s_addr == 0 )
-                    // ack->type( Tins::DHCP::Flags::NAK );
-                    ack->type(( Tins::DHCP::Flags )6 );
-                else
-                    ack->type( Tins::DHCP::Flags::ACK );
+            if( in_yiaddr.s_addr == 0 )
+                ack->type( Tins::DHCP::Flags::NAK );
+            else
+                ack->type( Tins::DHCP::Flags::ACK );
                         
-                ack->yiaddr( inet_ntoa( in_yiaddr ));
-                mk_reply( dhcp, ack );
+            ack->yiaddr( inet_ntoa( in_yiaddr ));
+            mk_reply( dhcp, ack );
                 
-                Tins::EthernetII opkt = Tins::EthernetII( src_mac, info.hw_addr ) / 
-                    Tins::IP( ack->yiaddr(), info.ip_addr ) / Tins::UDP( 68, 67 ) / *ack;
-                    
+            Tins::EthernetII opkt = Tins::EthernetII( src_mac, info.hw_addr ) / 
+                Tins::IP( ack->yiaddr(), info.ip_addr ) / Tins::UDP( 68, 67 ) / *ack;
+                
+/*           DHCP_MESSAGE_TYPE, DHCP_SERVER_IDENTIFIER          
+            // if( dhcp->server_identifier() == info.ip_addr )
+            {
                 of_send( &opkt );
             }   
+*/            
+            auto dh_server_identifier = dhcp->search_option( Tins::DHCP::OptionTypes::DHCP_SERVER_IDENTIFIER );
+            if( dh_server_identifier )
+            {
+                if( dhcp->server_identifier() == info.ip_addr )
+                    of_send( &opkt );
+            }
+            else
+                of_send( &opkt );
         }
         if( *dh_type->data_ptr() == Tins::DHCP::Flags::DECLINE )
         {
@@ -335,11 +343,11 @@ bool dhcp_service::of_echo( uint32_t addr )
     struct in_addr address;
     address.s_addr = addr;
     
-    std::cout << "  of_echo( " << inet_ntoa( address ) << " )\tfalse \n";
+    std::cout << "  of_echo( " << inet_ntoa( address ) << " )\t false \n";
     // const Tins::NetworkInterface nic( NIC );
     // Tins::NetworkInterface::Info info = nic.addresses();
-    
     // of13::OutputAction output_action( of13::OFPP_ALL, of13::OFPCML_NO_BUFFER );
+    
     return false;
 }
 
