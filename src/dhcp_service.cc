@@ -149,12 +149,6 @@ void dhcp_service::service( Tins::DHCP *dhcp )
             Tins::EthernetII opkt = Tins::EthernetII( src_mac, info.hw_addr ) / 
                 Tins::IP( ack->yiaddr(), info.ip_addr ) / Tins::UDP( 68, 67 ) / *ack;
                 
-/*           DHCP_MESSAGE_TYPE, DHCP_SERVER_IDENTIFIER          
-            // if( dhcp->server_identifier() == info.ip_addr )
-            {
-                of_send( &opkt );
-            }   
-*/            
             auto dh_server_identifier = dhcp->search_option( Tins::DHCP::OptionTypes::DHCP_SERVER_IDENTIFIER );
             if( dh_server_identifier )
             {
