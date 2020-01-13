@@ -154,6 +154,8 @@ void dhcp_service::service( Tins::DHCP *dhcp )
             {
                 if( dhcp->server_identifier() == info.ip_addr )
                     of_send( &opkt );
+                else
+                    std::cout << "remove lease_base rec. " << inet_ntoa( in_yiaddr ) << std::endl;
             }
             else
                 of_send( &opkt );
@@ -341,7 +343,17 @@ bool dhcp_service::of_echo( uint32_t addr )
     // const Tins::NetworkInterface nic( NIC );
     // Tins::NetworkInterface::Info info = nic.addresses();
     // of13::OutputAction output_action( of13::OFPP_ALL, of13::OFPCML_NO_BUFFER );
-    
+/*    
+    {
+        of13::PacketOut po;
+        po.data( pi.data(), pi.data_len());
+        // po.in_port( in_port_ );
+        of13::OutputAction output_action( of13::OFPP_ALL, of13::OFPCML_NO_BUFFER );
+        
+        po.add_action( output_action );
+        switch_manager_->switch_( dpid_ )->connection()->send( po );
+    }
+*/    
     return false;
 }
 
